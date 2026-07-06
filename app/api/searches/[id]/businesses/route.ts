@@ -25,6 +25,7 @@ export async function GET(_req: Request, { params }: Ctx) {
         googleRating: true,
         googleReviews: true,
         status: true,
+        inWorkList: true,
         coarseScore: true,
         scoreBreakdown: true,
       },

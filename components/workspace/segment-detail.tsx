@@ -4,10 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
+  Check,
   ExternalLink,
   Filter,
   Globe,
   Phone,
+  Plus,
   Radar,
   Star,
 } from "lucide-react";
@@ -28,6 +30,7 @@ type Business = {
   googleRating: number | null;
   googleReviews: number | null;
   status: string;
+  inWorkList: boolean;
   coarseScore: number;
   scoreBreakdown: Breakdown;
 };
@@ -137,6 +140,26 @@ export function SegmentDetail({
       setMsg(e instanceof Error ? e.message : "Bir hata oluştu.");
     } finally {
       setScanning(false);
+    }
+  }
+
+  async function toggleWork(id: string, next: boolean) {
+    setBusinesses((bs) =>
+      bs.map((b) => (b.id === id ? { ...b, inWorkList: next } : b)),
+    );
+    try {
+      const res = await fetch(`/api/businesses/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inWorkList: next }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      // geri al
+      setBusinesses((bs) =>
+        bs.map((b) => (b.id === id ? { ...b, inWorkList: !next } : b)),
+      );
+      setMsg("Çalışma listesi güncellenemedi.");
     }
   }
 
@@ -264,7 +287,7 @@ export function SegmentDetail({
                 </div>
                 <div className={`divide-y overflow-hidden rounded-lg border ${bucket.accent}`}>
                   {items.map((b) => (
-                    <FirmRow key={b.id} b={b} badge={bucket.badge} />
+                    <FirmRow key={b.id} b={b} badge={bucket.badge} onToggleWork={toggleWork} />
                   ))}
                 </div>
               </section>
@@ -276,7 +299,12 @@ export function SegmentDetail({
               <h2 className="text-muted-foreground mb-2 font-semibold">Skorlanmadı</h2>
               <div className="divide-y overflow-hidden rounded-lg border">
                 {unscored.map((b) => (
-                  <FirmRow key={b.id} b={b} badge="bg-muted text-muted-foreground" />
+                  <FirmRow
+                    key={b.id}
+                    b={b}
+                    badge="bg-muted text-muted-foreground"
+                    onToggleWork={toggleWork}
+                  />
                 ))}
               </div>
             </section>
@@ -287,7 +315,15 @@ export function SegmentDetail({
   );
 }
 
-function FirmRow({ b, badge }: { b: Business; badge: string }) {
+function FirmRow({
+  b,
+  badge,
+  onToggleWork,
+}: {
+  b: Business;
+  badge: string;
+  onToggleWork: (id: string, next: boolean) => void;
+}) {
   const detected = b.scoreBreakdown?.signals.filter((s) => s.detected) ?? [];
   const undetected = b.scoreBreakdown?.signals.filter((s) => !s.detected).length ?? 0;
 
@@ -347,6 +383,26 @@ function FirmRow({ b, badge }: { b: Business; badge: string }) {
           </div>
         )}
       </div>
+
+      <button
+        onClick={() => onToggleWork(b.id, !b.inWorkList)}
+        className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium ${
+          b.inWorkList
+            ? "border-green-300 bg-green-50 text-green-700 dark:border-green-900/60 dark:bg-green-950/40 dark:text-green-300"
+            : "hover:bg-accent"
+        }`}
+        title={b.inWorkList ? "Çalışma listemden çıkar" : "Çalışma listeme ekle"}
+      >
+        {b.inWorkList ? (
+          <>
+            <Check className="size-3" /> Listede
+          </>
+        ) : (
+          <>
+            <Plus className="size-3" /> Çalışmaya ekle
+          </>
+        )}
+      </button>
     </div>
   );
 }
