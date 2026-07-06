@@ -15,7 +15,7 @@ export async function GET(_req: Request, { params }: Ctx) {
   const [businesses, caps, placesToday, todayTotal] = await Promise.all([
     prisma.business.findMany({
       where: { searchId: id, blacklisted: false },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ coarseScore: "desc" }, { googleReviews: "desc" }],
       select: {
         id: true,
         name: true,
@@ -25,6 +25,8 @@ export async function GET(_req: Request, { params }: Ctx) {
         googleRating: true,
         googleReviews: true,
         status: true,
+        coarseScore: true,
+        scoreBreakdown: true,
       },
     }),
     getCaps(),

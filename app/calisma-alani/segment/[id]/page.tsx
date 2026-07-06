@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCaps, getDailyUsage } from "@/lib/quota";
-import { SegmentDetail } from "@/components/workspace/segment-detail";
+import { SegmentDetail, type Breakdown } from "@/components/workspace/segment-detail";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export default async function SegmentPage({
   const [businesses, caps, placesToday] = await Promise.all([
     prisma.business.findMany({
       where: { searchId: id, blacklisted: false },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ coarseScore: "desc" }, { googleReviews: "desc" }],
       select: {
         id: true,
         name: true,
@@ -27,6 +27,8 @@ export default async function SegmentPage({
         googleRating: true,
         googleReviews: true,
         status: true,
+        coarseScore: true,
+        scoreBreakdown: true,
       },
     }),
     getCaps(),
@@ -45,8 +47,7 @@ export default async function SegmentPage({
       }}
       initialBusinesses={businesses.map((b) => ({
         ...b,
-        googleRating: b.googleRating,
-        googleReviews: b.googleReviews,
+        scoreBreakdown: b.scoreBreakdown as unknown as Breakdown,
       }))}
       initialUsage={{
         caps,
