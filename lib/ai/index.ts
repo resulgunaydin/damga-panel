@@ -102,9 +102,15 @@ async function genGemini(
 ): Promise<GenerateResult> {
   const model = AI_MODELS.gemini[tier];
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const generationConfig: Record<string, unknown> = { maxOutputTokens: maxTokens };
+  // Flash modellerde "düşünme" varsayılan açık ve çıktı bütçesini yer;
+  // kısa üretimlerde kapatıp tüm bütçeyi metne bırakırız.
+  if (model.includes("flash")) {
+    generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  }
   const body: Record<string, unknown> = {
     contents: [{ role: "user", parts: [{ text: input.prompt }] }],
-    generationConfig: { maxOutputTokens: maxTokens },
+    generationConfig,
   };
   if (input.system) body.systemInstruction = { parts: [{ text: input.system }] };
 
