@@ -14,6 +14,7 @@ import {
   Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const STATUS_LABEL: Record<string, string> = {
   YENI: "Yeni",
@@ -66,6 +67,8 @@ export function FirmaDetay({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [noteBusy, setNoteBusy] = useState(false);
 
   const wa = waNumber(business.phone);
   const waLink =
@@ -100,6 +103,34 @@ export function FirmaDetay({
       setErr(e instanceof Error ? e.message : "Hata");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function addNote() {
+    const text = note.trim();
+    if (!text) return;
+    setNoteBusy(true);
+    try {
+      const res = await fetch(`/api/businesses/${business.id}/activities`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text }),
+      });
+      if (!res.ok) throw new Error();
+      setActivities((a) => [
+        {
+          id: crypto.randomUUID(),
+          kind: "NOT",
+          message: text,
+          createdAt: new Date().toISOString(),
+        },
+        ...a,
+      ]);
+      setNote("");
+    } catch {
+      setErr("Not eklenemedi.");
+    } finally {
+      setNoteBusy(false);
     }
   }
 
@@ -250,6 +281,17 @@ export function FirmaDetay({
       {/* Aktivite defteri (Bölüm 4.9) */}
       <section>
         <h2 className="mb-2 font-semibold">Firma defteri</h2>
+        <div className="mb-3 flex gap-2">
+          <Input
+            placeholder="Elle not ekle (ör. aradım, konuştuk…)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addNote()}
+          />
+          <Button variant="outline" onClick={addNote} disabled={noteBusy || !note.trim()}>
+            Not ekle
+          </Button>
+        </div>
         {activities.length === 0 ? (
           <p className="text-muted-foreground text-sm">Henüz kayıt yok.</p>
         ) : (
@@ -259,7 +301,14 @@ export function FirmaDetay({
                 <span className="text-muted-foreground w-32 shrink-0 text-xs">
                   {new Date(a.createdAt).toLocaleString("tr-TR")}
                 </span>
-                <span>{a.message}</span>
+                <span className="flex-1">
+                  {a.kind === "NOT" && (
+                    <span className="mr-1.5 rounded bg-blue-100 px-1 py-0.5 text-xs text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+                      not
+                    </span>
+                  )}
+                  {a.message}
+                </span>
               </li>
             ))}
           </ul>
