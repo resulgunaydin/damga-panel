@@ -68,6 +68,7 @@ export function FirmaDetay({
   isCustomer,
   jobs,
   hasPlaceId,
+  hasSearch,
   analyses,
 }: {
   business: Business;
@@ -77,6 +78,7 @@ export function FirmaDetay({
   isCustomer: boolean;
   jobs: Job[];
   hasPlaceId: boolean;
+  hasSearch: boolean;
   analyses: AnalysisRecord[];
 }) {
   const [status, setStatus] = useState(business.status);
@@ -285,7 +287,12 @@ export function FirmaDetay({
       {isCustomer && <IsTakibi businessId={business.id} initialJobs={jobs} />}
 
       {/* Derin Analiz (Bölüm 4.5) — elle tetiklenir */}
-      <AnalizPanel businessId={business.id} hasPlaceId={hasPlaceId} initial={analyses} />
+      <AnalizPanel
+        businessId={business.id}
+        hasPlaceId={hasPlaceId}
+        hasSearch={hasSearch}
+        initial={analyses}
+      />
 
       {/* Satış fırsatları (Bölüm 4.6) — fiyatsız */}
       {opportunities.length > 0 && (

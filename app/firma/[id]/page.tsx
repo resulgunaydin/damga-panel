@@ -44,9 +44,10 @@ export default async function FirmaPage({
     <FirmaDetay
       opportunities={opportunities}
       hasPlaceId={!!business.placeId}
+      hasSearch={!!business.searchId}
       analyses={Array.from(latestByKind.values()).map((a) => ({
         kind: a.kind,
-        result: a.result as { metrics: { label: string; value: string; level: "kesin" | "tahmini" | "tespit-edilemedi" }[]; summary: string },
+        result: a.result,
         generatedAt: a.generatedAt.toISOString(),
       }))}
       business={{
