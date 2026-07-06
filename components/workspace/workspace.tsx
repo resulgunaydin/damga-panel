@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   ChevronRight,
@@ -616,10 +617,13 @@ function SegmentCard({
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="font-medium">
+          <Link
+            href={`/calisma-alani/segment/${segment.id}`}
+            className="font-medium hover:underline"
+          >
             {segment.city}
             {segment.district ? ` · ${segment.district}` : ""}
-          </p>
+          </Link>
           <p className="text-muted-foreground text-sm">{segment.sector}</p>
         </div>
         <button
