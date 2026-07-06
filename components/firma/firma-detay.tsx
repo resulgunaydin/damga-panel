@@ -4,12 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
+  Ban,
   Check,
   Copy,
   Globe,
   MessageCircle,
   Phone,
   RefreshCw,
+  RotateCcw,
   Sparkles,
   Star,
 } from "lucide-react";
@@ -35,6 +37,7 @@ type Business = {
   website: string | null;
   address: string | null;
   status: string;
+  blacklisted: boolean;
   coarseScore: number;
   googleRating: number | null;
   googleReviews: number | null;
@@ -69,6 +72,33 @@ export function FirmaDetay({
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
+  const [blacklisted, setBlacklisted] = useState(business.blacklisted);
+
+  async function toggleBlacklist(next: boolean) {
+    if (next && !confirm("Firma kara listeye alınsın mı? Listelerde ve keşifte bir daha gösterilmez."))
+      return;
+    setBlacklisted(next);
+    try {
+      const res = await fetch(`/api/businesses/${business.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blacklisted: next }),
+      });
+      if (!res.ok) throw new Error();
+      setActivities((a) => [
+        {
+          id: crypto.randomUUID(),
+          kind: "SISTEM",
+          message: next ? "Kara listeye alındı." : "Kara listeden çıkarıldı.",
+          createdAt: new Date().toISOString(),
+        },
+        ...a,
+      ]);
+    } catch {
+      setBlacklisted(!next);
+      setErr("Kara liste güncellenemedi.");
+    }
+  }
 
   const wa = waNumber(business.phone);
   const waLink =
@@ -208,13 +238,32 @@ export function FirmaDetay({
               )}
             </div>
           </div>
-          <div className="text-right">
-            <div className="bg-muted inline-flex size-12 items-center justify-center rounded-lg text-lg font-semibold">
-              {business.coarseScore}
+          <div className="flex flex-col items-end gap-2">
+            <div className="text-right">
+              <div className="bg-muted inline-flex size-12 items-center justify-center rounded-lg text-lg font-semibold">
+                {business.coarseScore}
+              </div>
+              <div className="text-muted-foreground mt-1 text-xs">{STATUS_LABEL[status]}</div>
             </div>
-            <div className="text-muted-foreground mt-1 text-xs">{STATUS_LABEL[status]}</div>
+            {blacklisted ? (
+              <Button variant="ghost" size="sm" onClick={() => toggleBlacklist(false)}>
+                <RotateCcw className="size-3.5" /> Kara listeden çıkar
+              </Button>
+            ) : (
+              <button
+                onClick={() => toggleBlacklist(true)}
+                className="text-muted-foreground inline-flex items-center gap-1 text-xs hover:text-red-600"
+              >
+                <Ban className="size-3.5" /> Kara listeye al
+              </button>
+            )}
           </div>
         </div>
+        {blacklisted && (
+          <div className="mt-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+            Bu firma kara listede — listelerde ve keşifte gösterilmez.
+          </div>
+        )}
       </div>
 
       {/* Ön mesaj (nabız yoklama) */}

@@ -2,19 +2,21 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, GripVertical, MoreVertical, Star } from "lucide-react";
+import { ArrowLeft, GripVertical, MoreVertical, Plus, Star } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
 // Etiketler client tarafında (lib/business prisma'yı bundle'a sokmasın diye kopya).
@@ -97,6 +99,59 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
     firmId: null,
   });
   const [err, setErr] = useState<string | null>(null);
+  const [manual, setManual] = useState({
+    open: false,
+    name: "",
+    phone: "",
+    website: "",
+    error: "",
+  });
+
+  async function addManual() {
+    const name = manual.name.trim();
+    if (!name) return;
+    setManual((m) => ({ ...m, error: "" }));
+    try {
+      const res = await fetch("/api/businesses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          phone: manual.phone,
+          website: manual.website,
+        }),
+      });
+      const data = await res.json();
+      if (res.status === 409) {
+        setManual((m) => ({
+          ...m,
+          error: `${data.error} (durum: ${data.existing?.status})`,
+        }));
+        return;
+      }
+      if (!res.ok) throw new Error(data.error ?? "Eklenemedi");
+      const b = data.business;
+      setFirms((fs) => [
+        {
+          id: b.id,
+          name: b.name,
+          status: "YENI",
+          stage: "ELEME",
+          coarseScore: 0,
+          lossReason: null,
+          phone: b.phone,
+          website: b.website,
+          googleRating: null,
+          googleReviews: null,
+          context: "manuel",
+        },
+        ...fs,
+      ]);
+      setManual({ open: false, name: "", phone: "", website: "", error: "" });
+    } catch (e) {
+      setManual((m) => ({ ...m, error: e instanceof Error ? e.message : "Hata" }));
+    }
+  }
 
   async function patch(id: string, status: string, lossReason?: string) {
     const prev = firms.find((f) => f.id === id);
@@ -153,10 +208,20 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
         >
           <ArrowLeft className="size-4" /> Çalışma Alanı
         </Link>
-        <h1 className="text-2xl font-semibold">Çalışma Panom</h1>
-        <p className="text-muted-foreground text-sm">
-          {firms.length} firma · kartları sürükleyerek veya ⋮ menüsüyle ilerlet.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Çalışma Panom</h1>
+            <p className="text-muted-foreground text-sm">
+              {firms.length} firma · kartları sürükleyerek veya ⋮ menüsüyle ilerlet.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => setManual((m) => ({ ...m, open: true }))}
+          >
+            <Plus className="size-4" /> Manuel firma ekle
+          </Button>
+        </div>
       </div>
 
       {err && (
@@ -229,6 +294,55 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
               </Button>
             ))}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manuel firma ekleme (Bölüm 4.2) */}
+      <Dialog
+        open={manual.open}
+        onOpenChange={(open) => setManual((m) => ({ ...m, open }))}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Manuel firma ekle</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <Input
+              autoFocus
+              placeholder="Firma adı *"
+              value={manual.name}
+              onChange={(e) => setManual((m) => ({ ...m, name: e.target.value }))}
+            />
+            <Input
+              placeholder="Telefon (opsiyonel)"
+              value={manual.phone}
+              onChange={(e) => setManual((m) => ({ ...m, phone: e.target.value }))}
+            />
+            <Input
+              placeholder="Web sitesi (opsiyonel)"
+              value={manual.website}
+              onChange={(e) => setManual((m) => ({ ...m, website: e.target.value }))}
+            />
+            <p className="text-muted-foreground text-xs">
+              Çalışma listene “Yeni” durumda eklenir. Aynı isim/telefon varsa uyarılırsın.
+            </p>
+            {manual.error && (
+              <p className="text-sm text-red-600">{manual.error}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() =>
+                setManual({ open: false, name: "", phone: "", website: "", error: "" })
+              }
+            >
+              Vazgeç
+            </Button>
+            <Button onClick={addManual} disabled={!manual.name.trim()}>
+              Ekle
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </main>

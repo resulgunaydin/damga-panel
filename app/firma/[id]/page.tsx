@@ -29,6 +29,7 @@ export default async function FirmaPage({
         website: business.website,
         address: business.address,
         status: business.status,
+        blacklisted: business.blacklisted,
         coarseScore: business.coarseScore,
         googleRating: business.googleRating,
         googleReviews: business.googleReviews,
