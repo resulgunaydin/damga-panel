@@ -1,5 +1,5 @@
 // DamgaPanel — Prisma şeması
-// Modeller #2 "Veritabanı şeması" issue'sunda eklenecek.
+// Tasarım: Bölüm 7 (veri modeli) + Bölüm 3.2 (huni durumları / kayıp sebepleri).
 // Bağlantı URL'i prisma.config.ts üzerinden (DATABASE_URL) sağlanır.
 
 generator client {
@@ -9,4 +9,363 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────
+// Çalışma alanı: klasör ağacı + arama segmentleri (Bölüm 4.1)
+// ─────────────────────────────────────────────────────────────
+
+model Folder {
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?
+  parent    Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Folder[] @relation("FolderTree")
+  searches  Search[]
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Bir il/ilçe + sektör araması (segment kartı). Sonuçları cache'lenir.
+model Search {
+  id         String     @id @default(cuid())
+  folderId   String?
+  folder     Folder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  city       String
+  district   String?
+  sector     String
+  keywords   String[] // aranan anahtar kelime varyantları (Bölüm 4.2)
+  queryCount Int        @default(0) // bu segment için harcanan Places sorgusu
+  gridState  Json? // adaptive grid durumu ("devamını gör" için)
+  lastRunAt  DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  businesses Business[]
+
+  @@index([folderId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Firma (huninin merkezi) — Bölüm 3.2, 4.2, 4.3
+// ─────────────────────────────────────────────────────────────
+
+model Business {
+  id             String         @id @default(cuid())
+  searchId       String?
+  search         Search?        @relation(fields: [searchId], references: [id], onDelete: SetNull)
+  placeId        String?        @unique // Google place_id ile tekilleştirme (dedup)
+  name           String
+  phone          String?
+  website        String?
+  address        String?
+  lat            Float?
+  lng            Float?
+  googleRating   Float?
+  googleReviews  Int?
+  social         Json? // sosyal medya linkleri
+  manualAdded    Boolean        @default(false) // referansla elle eklendi mi (Bölüm 4.2)
+  coarseScore    Int            @default(0) // kaba eleme fırsat skoru (Bölüm 4.3)
+  scoreBreakdown Json? // skorun kırılımı (site yok +40, SSL yok +15 ...)
+  stage          FunnelStage    @default(ELEME)
+  status         BusinessStatus @default(YENI)
+  lossReason     LossReason? // KAYIP ise sebebi (Bölüm 3.2)
+  inWorkList     Boolean        @default(false) // "Çalışma Listeme" seçildi mi (Bölüm 3.4)
+  blacklisted    Boolean        @default(false) // kara liste = bir daha gösterme (Bölüm 4.2)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  analyses      Analysis[]
+  messages      Message[]
+  presentations Presentation[]
+  activities    Activity[]
+  tasks         Task[]
+  customer      Customer?
+
+  @@index([searchId])
+  @@index([status])
+  @@index([stage])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Analiz / mesaj / sunum (elle tetiklenen pahalı adımlar) — Bölüm 4.5–4.8
+// ─────────────────────────────────────────────────────────────
+
+// Firmaya ait derin analiz. Her tür ayrı satır → bağımsız cache/tazeleme (Bölüm 5).
+model Analysis {
+  id          String       @id @default(cuid())
+  businessId  String
+  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  kind        AnalysisKind
+  result      Json // ham analiz çıktısı (kesin/tahmini/imkânsız sinyaller dahil)
+  score       Int? // varsa kalite/fırsat puanı
+  generatedAt DateTime     @default(now())
+  createdAt   DateTime     @default(now())
+
+  @@index([businessId, kind])
+}
+
+// Üretilen mesajlar (Bölüm 4.7). Sistem üretir, kullanıcı gönderir.
+model Message {
+  id                String             @id @default(cuid())
+  businessId        String
+  business          Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  kind              MessageKind
+  objectionCategory ObjectionCategory? // ITIRAZ_CEVABI ise kategori
+  content           String
+  model             String? // hangi AI modeli ürettiyse (opus/haiku)
+  generatedAt       DateTime           @default(now())
+  createdAt         DateTime           @default(now())
+
+  @@index([businessId])
+}
+
+// Sunum (Bölüm 4.8). Fiyatlandırma bölümü YOK.
+model Presentation {
+  id            String             @id @default(cuid())
+  businessId    String
+  business      Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  format        PresentationFormat @default(HTML)
+  sectionConfig Json // bölüm aç/kapat + sıra
+  content       Json // her bölümün (düzenlenmiş) içeriği
+  htmlOutput    String? // üretilen HTML çıktısı
+  pdfPath       String? // üretilen PDF yolu
+  status        PresentationStatus @default(TASLAK)
+  openedAt      DateTime? // HTML sunum-link açılma takibi
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([businessId])
+}
+
+// Sunum şablonu — bir kez ayarlanan varsayılanlar (Bölüm 4.8 üst katman).
+model PresentationTemplate {
+  id              String             @id @default(cuid())
+  defaultFormat   PresentationFormat @default(HTML)
+  defaultSections Json // varsayılan açık/kapalı bölümler
+  logoUrl         String?
+  brandColor      String?
+  contact         Json? // iletişim bilgileri
+  updatedAt       DateTime           @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────
+// CRM defteri + görevler — Bölüm 4.9, 4.10
+// ─────────────────────────────────────────────────────────────
+
+// Firma defteri: sistem olayları + elle notlar (kronolojik).
+model Activity {
+  id         String       @id @default(cuid())
+  businessId String
+  business   Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  kind       ActivityKind @default(SISTEM)
+  message    String
+  meta       Json?
+  createdAt  DateTime     @default(now())
+
+  @@index([businessId, createdAt])
+}
+
+// Görev Kutusu: takip/deadline/elle görevler (Bölüm 4.10).
+model Task {
+  id           String     @id @default(cuid())
+  title        String
+  kind         TaskKind   @default(MANUEL)
+  status       TaskStatus @default(ACIK)
+  dueAt        DateTime?
+  snoozedUntil DateTime? // ertelendiyse
+  businessId   String?
+  business     Business?  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  jobId        String?
+  job          Job?       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+  completedAt  DateTime?
+
+  @@index([status, dueAt])
+  @@index([businessId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Gerçek müşteri: iş + elle ödeme takibi — Bölüm 4.11
+// ─────────────────────────────────────────────────────────────
+
+model Customer {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  jobs       Job[]
+}
+
+// Çoklu iş satırı. agreedAmount ELLE girilir; sistem üretmez, sadece saklar.
+model Job {
+  id           String    @id @default(cuid())
+  customerId   String
+  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  title        String
+  status       JobStatus @default(BASLAMADI)
+  deadline     DateTime?
+  note         String?
+  agreedAmount Decimal?  @db.Decimal(12, 2) // anlaşılan tutar (elle)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  payments     Payment[]
+  tasks        Task[]
+
+  @@index([customerId])
+}
+
+// Tahsilat kayıtları — tamamen ELLE (Bölüm 4.11 / 4.6: fiyat sistemden üretilmez).
+model Payment {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  amount    Decimal  @db.Decimal(12, 2) // alınan ücret (elle)
+  note      String?
+  paidAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Yardımcı varlıklar — Bölüm 4.6, 4.12
+// ─────────────────────────────────────────────────────────────
+
+// Hizmet Listesi — FİYATSIZ (Bölüm 4.6): sadece "hangi hizmetler var".
+model ServiceCatalog {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Sorgu/analiz sayaçları (Bölüm 4.12) — gün bazında toplanır; ay = günlerin toplamı.
+model ApiUsage {
+  id    String       @id @default(cuid())
+  kind  ApiUsageKind
+  day   DateTime     @db.Date
+  count Int          @default(0)
+
+  @@unique([kind, day])
+}
+
+// Ayarlar: quota tavanları, takip süreleri (varsayılan 3/7/15) vb. (Bölüm 4.10, 4.12).
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────
+// Enumlar
+// ─────────────────────────────────────────────────────────────
+
+// Huninin üç aşaması (Bölüm 3.2).
+enum FunnelStage {
+  ELEME
+  POTANSIYEL
+  MUSTERI
+}
+
+// Firma durumları (Bölüm 3.2). status → stage tutarlılığı uygulama katmanında korunur.
+enum BusinessStatus {
+  YENI // Aşama 1
+  ON_MESAJ_GONDERILDI
+  ULASILAMADI
+  POTANSIYEL // Aşama 2
+  SUNUM_YAPILDI
+  TEKLIF_YAPILDI
+  KAYIP
+  IS_DEVAM // Aşama 3
+  IS_BITTI
+}
+
+// Kayıp sebepleri (Bölüm 3.2).
+enum LossReason {
+  ILGISIZ
+  FIYAT
+  RAKIBE_GITTI
+  IHTIYAC_YOK
+  ULASILAMADI
+}
+
+// Analiz motorları (Bölüm 4.5).
+enum AnalysisKind {
+  WEBSITE
+  GOOGLE_BUSINESS
+  COMPETITOR
+}
+
+// Mesaj türleri (Bölüm 4.7).
+enum MessageKind {
+  ON_MESAJ
+  SUNUM_SONRASI
+  TAKIP
+  ITIRAZ_CEVABI
+}
+
+// İtiraz kategorileri (Bölüm 4.7).
+enum ObjectionCategory {
+  PAHALI
+  DUSUNECEGIM
+  ZAMANIM_YOK
+  RAKIPLE_CALISIYORUM
+  IHTIYACIM_YOK
+}
+
+// Sunum formatı (Bölüm 4.8).
+enum PresentationFormat {
+  HTML
+  PDF
+  IKISI
+}
+
+enum PresentationStatus {
+  TASLAK
+  URETILDI
+}
+
+// Görev türü/durumu (Bölüm 4.10).
+enum TaskKind {
+  TAKIP
+  DEADLINE
+  MANUEL
+}
+
+enum TaskStatus {
+  ACIK
+  TAMAM
+  ERTELENDI
+}
+
+// İş durumu (Bölüm 4.11).
+enum JobStatus {
+  BASLAMADI
+  DEVAM
+  BITTI
+}
+
+// Aktivite kaydı türü (Bölüm 4.9).
+enum ActivityKind {
+  SISTEM
+  NOT
+}
+
+// Dış çağrı sayaç türleri (Bölüm 4.12 / 5).
+enum ApiUsageKind {
+  PLACES_SEARCH
+  PLACE_DETAILS
+  WEBSITE_ANALYSIS
+  PAGESPEED
+  GBP_ANALYSIS
+  COMPETITOR_ANALYSIS
+  AI_MESSAGE
+  AI_ANALYSIS
 }
