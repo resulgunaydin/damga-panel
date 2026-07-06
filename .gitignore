@@ -63,3 +63,6 @@ Thumbs.db
 
 # Redis / BullMQ yerel dump
 dump.rdb
+
+# Prisma üretilen client (schema.prisma commit'lenir, üretilen kod hariç)
+/lib/generated
