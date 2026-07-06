@@ -9,6 +9,7 @@ import {
   Copy,
   Globe,
   MessageCircle,
+  Package,
   Phone,
   RefreshCw,
   RotateCcw,
@@ -55,12 +56,16 @@ function waNumber(phone: string | null): string | null {
   return d;
 }
 
+type Opportunity = { area: string; priority: number; reasons: string[] };
+
 export function FirmaDetay({
   business,
+  opportunities,
   initialMessage,
   activities: initialActivities,
 }: {
   business: Business;
+  opportunities: Opportunity[];
   initialMessage: string | null;
   activities: Activity[];
 }) {
@@ -265,6 +270,34 @@ export function FirmaDetay({
           </div>
         )}
       </div>
+
+      {/* Satış fırsatları (Bölüm 4.6) — fiyatsız */}
+      {opportunities.length > 0 && (
+        <section className="rounded-lg border p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 font-semibold">
+              <Package className="size-4" /> Satış fırsatları
+            </h2>
+            <Link href="/hizmetler" className="text-muted-foreground text-xs hover:underline">
+              Hizmet listem
+            </Link>
+          </div>
+          <ul className="space-y-2">
+            {opportunities.map((o) => (
+              <li key={o.area} className="flex items-start gap-3">
+                <span className="text-amber-500">
+                  {"★".repeat(o.priority)}
+                  <span className="text-muted-foreground">{"★".repeat(3 - o.priority)}</span>
+                </span>
+                <div>
+                  <div className="font-medium">{o.area}</div>
+                  <div className="text-muted-foreground text-xs">{o.reasons.join(" · ")}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Ön mesaj (nabız yoklama) */}
       <section className="rounded-lg border p-4">

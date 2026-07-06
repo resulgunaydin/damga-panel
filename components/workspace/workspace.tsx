@@ -10,6 +10,7 @@ import {
   Inbox,
   Layers,
   MoreVertical,
+  Package,
   Pencil,
   Plus,
   Sparkles,
@@ -272,6 +273,13 @@ export function Workspace({
               className="hover:bg-accent rounded-md p-2"
             >
               <ClipboardList className="size-4" />
+            </Link>
+            <Link
+              href="/hizmetler"
+              title="Hizmet Listesi"
+              className="hover:bg-accent rounded-md p-2"
+            >
+              <Package className="size-4" />
             </Link>
             <Link
               href="/kullanim"

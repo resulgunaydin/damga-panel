@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { opportunitiesFromSignals } from "@/lib/opportunity";
+import type { Signal } from "@/lib/scoring";
 import { FirmaDetay } from "@/components/firma/firma-detay";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +22,12 @@ export default async function FirmaPage({
   });
   if (!business) notFound();
 
+  const breakdown = business.scoreBreakdown as { signals?: Signal[] } | null;
+  const opportunities = opportunitiesFromSignals(breakdown?.signals);
+
   return (
     <FirmaDetay
+      opportunities={opportunities}
       business={{
         id: business.id,
         name: business.name,
