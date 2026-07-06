@@ -14,6 +14,22 @@ function normalize(url: string): string {
   return /^https?:\/\//i.test(url) ? url : `https://${url}`;
 }
 
+// HTML metnini PDF'e dönüştürür (Bölüm 4.8 — sunum PDF çıktısı).
+export async function renderPdf(html: string): Promise<Buffer> {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle" });
+    return await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "16mm", bottom: "16mm", left: "14mm", right: "14mm" },
+    });
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
 export async function observeSite(url: string): Promise<BrowserObs> {
   let browser;
   try {

@@ -297,6 +297,20 @@ export function FirmaDetay({
         initial={analyses}
       />
 
+      {/* Sunum editörü linki (Bölüm 4.8) */}
+      <Link
+        href={`/firma/${business.id}/sunum`}
+        className="flex items-center justify-between rounded-lg border p-4 hover:bg-accent/40"
+      >
+        <div>
+          <div className="font-medium">Sunum hazırla</div>
+          <div className="text-muted-foreground text-sm">
+            Analiz verisinden ikna sunumu (AI taslak, HTML/PDF) — fiyat yok.
+          </div>
+        </div>
+        <span className="text-muted-foreground">→</span>
+      </Link>
+
       {/* Satış fırsatları (Bölüm 4.6) — fiyatsız */}
       {opportunities.length > 0 && (
         <section className="rounded-lg border p-4">
