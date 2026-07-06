@@ -8,6 +8,7 @@ import {
   FolderPlus,
   Gauge,
   Inbox,
+  ListChecks,
   Layers,
   MoreVertical,
   Package,
@@ -273,6 +274,13 @@ export function Workspace({
               className="hover:bg-accent rounded-md p-2"
             >
               <ClipboardList className="size-4" />
+            </Link>
+            <Link
+              href="/gorevler"
+              title="Görev Kutusu"
+              className="hover:bg-accent rounded-md p-2"
+            >
+              <ListChecks className="size-4" />
             </Link>
             <Link
               href="/hizmetler"
