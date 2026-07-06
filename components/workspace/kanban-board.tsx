@@ -255,7 +255,12 @@ function Card({
     >
       <div className="flex items-start gap-1">
         <GripVertical className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
-        <span className="flex-1 font-medium leading-tight">{f.name}</span>
+        <Link
+          href={`/firma/${f.id}`}
+          className="flex-1 font-medium leading-tight hover:underline"
+        >
+          {f.name}
+        </Link>
         <span className="bg-muted text-muted-foreground rounded px-1 text-xs">
           {f.coarseScore}
         </span>
