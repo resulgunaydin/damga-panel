@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IsTakibi, type Job } from "@/components/firma/is-takibi";
 
 const STATUS_LABEL: Record<string, string> = {
   YENI: "Yeni",
@@ -63,11 +64,15 @@ export function FirmaDetay({
   opportunities,
   initialMessage,
   activities: initialActivities,
+  isCustomer,
+  jobs,
 }: {
   business: Business;
   opportunities: Opportunity[];
   initialMessage: string | null;
   activities: Activity[];
+  isCustomer: boolean;
+  jobs: Job[];
 }) {
   const [status, setStatus] = useState(business.status);
   const [message, setMessage] = useState<string | null>(initialMessage);
@@ -270,6 +275,9 @@ export function FirmaDetay({
           </div>
         )}
       </div>
+
+      {/* Gerçek Müşteri iş takibi (Bölüm 4.11) */}
+      {isCustomer && <IsTakibi businessId={business.id} initialJobs={jobs} />}
 
       {/* Satış fırsatları (Bölüm 4.6) — fiyatsız */}
       {opportunities.length > 0 && (
