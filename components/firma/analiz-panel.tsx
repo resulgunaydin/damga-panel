@@ -32,11 +32,13 @@ export function AnalizPanel({
   businessId,
   hasPlaceId,
   hasSearch,
+  hasWebsite,
   initial,
 }: {
   businessId: string;
   hasPlaceId: boolean;
   hasSearch: boolean;
+  hasWebsite: boolean;
   initial: AnalysisRecord[];
 }) {
   const [analyses, setAnalyses] = useState<Record<string, AnalysisRecord>>(
@@ -63,8 +65,28 @@ export function AnalizPanel({
     }
   }
 
+  const website = analyses["WEBSITE"]?.result as GbpResult | undefined;
   const gbp = analyses["GOOGLE_BUSINESS"]?.result as GbpResult | undefined;
   const comp = analyses["COMPETITOR"]?.result as CompResult | undefined;
+
+  const MetricList = ({ data }: { data: GbpResult }) => (
+    <div className="space-y-2">
+      <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+        {data.metrics.map((m) => (
+          <div key={m.label} className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="text-muted-foreground">{m.label}</span>
+            <span className={LEVEL_STYLE[m.level]}>
+              {m.value}
+              {m.level !== "kesin" && (
+                <span className="text-muted-foreground ml-1 text-xs">({m.level})</span>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="text-sm">{data.summary}</p>
+    </div>
+  );
 
   return (
     <section className="rounded-lg border p-4">
@@ -78,6 +100,31 @@ export function AnalizPanel({
       {err && <div className="mb-3 rounded-md bg-red-600 px-3 py-1.5 text-sm text-white">{err}</div>}
 
       <div className="space-y-3">
+        {/* Website */}
+        <div className="rounded-md border p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="font-medium">Website</span>
+            {website ? (
+              <Button variant="ghost" size="sm" onClick={() => run("WEBSITE", true)} disabled={busy === "WEBSITE"}>
+                <RefreshCw className={`size-3.5 ${busy === "WEBSITE" ? "animate-spin" : ""}`} /> Tazele
+              </Button>
+            ) : (
+              <Button size="sm" onClick={() => run("WEBSITE")} disabled={busy === "WEBSITE" || !hasWebsite} title={hasWebsite ? "" : "Web sitesi yok"}>
+                {busy === "WEBSITE" ? "Analiz ediliyor…" : "Analiz yap"}
+              </Button>
+            )}
+          </div>
+          {website ? (
+            <MetricList data={website} />
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              {hasWebsite
+                ? "Gerçek tarayıcı + PageSpeed ile hız/SEO/mobil analizi için “Analiz yap”a bas."
+                : "Web sitesi yok — satış açısı zaten burada (site yok)."}
+            </p>
+          )}
+        </div>
+
         {/* Google Business */}
         <div className="rounded-md border p-3">
           <div className="mb-2 flex items-center justify-between">
@@ -171,9 +218,6 @@ export function AnalizPanel({
         </div>
       </div>
 
-      <p className="text-muted-foreground mt-3 text-xs">
-        Website analizi (PageSpeed) yakında bu panele eklenecek.
-      </p>
     </section>
   );
 }

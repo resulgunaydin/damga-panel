@@ -45,6 +45,7 @@ export default async function FirmaPage({
       opportunities={opportunities}
       hasPlaceId={!!business.placeId}
       hasSearch={!!business.searchId}
+      hasWebsite={!!business.website}
       analyses={Array.from(latestByKind.values()).map((a) => ({
         kind: a.kind,
         result: a.result,

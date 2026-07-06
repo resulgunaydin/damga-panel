@@ -69,6 +69,7 @@ export function FirmaDetay({
   jobs,
   hasPlaceId,
   hasSearch,
+  hasWebsite,
   analyses,
 }: {
   business: Business;
@@ -79,6 +80,7 @@ export function FirmaDetay({
   jobs: Job[];
   hasPlaceId: boolean;
   hasSearch: boolean;
+  hasWebsite: boolean;
   analyses: AnalysisRecord[];
 }) {
   const [status, setStatus] = useState(business.status);
@@ -291,6 +293,7 @@ export function FirmaDetay({
         businessId={business.id}
         hasPlaceId={hasPlaceId}
         hasSearch={hasSearch}
+        hasWebsite={hasWebsite}
         initial={analyses}
       />
 
