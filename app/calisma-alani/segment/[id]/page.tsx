@@ -27,6 +27,7 @@ export default async function SegmentPage({
         googleRating: true,
         googleReviews: true,
         status: true,
+        inWorkList: true,
         coarseScore: true,
         scoreBreakdown: true,
       },

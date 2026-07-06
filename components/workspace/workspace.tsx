@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   ChevronRight,
+  ClipboardList,
   FolderPlus,
   Gauge,
   Inbox,
@@ -264,6 +265,13 @@ export function Workspace({
             <Layers className="size-4" /> Çalışma Alanı
           </span>
           <div className="flex items-center gap-1">
+            <Link
+              href="/calisma-listem"
+              title="Çalışma Listem"
+              className="hover:bg-accent rounded-md p-2"
+            >
+              <ClipboardList className="size-4" />
+            </Link>
             <Link
               href="/kullanim"
               title="Kullanım & Bütçe"
