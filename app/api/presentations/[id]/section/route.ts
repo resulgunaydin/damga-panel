@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasRealWebsite } from "@/lib/website";
 import { prisma } from "@/lib/prisma";
 import { buildContext, draftSection, type SectionKey } from "@/lib/presentation";
 import { opportunitiesFromSignals } from "@/lib/opportunity";
@@ -36,7 +37,7 @@ export async function POST(req: Request, { params }: Ctx) {
     name: business.name,
     sector: business.search?.sector ?? null,
     city: business.search?.city ?? null,
-    hasWebsite: !!business.website,
+    hasWebsite: hasRealWebsite(business.website),
     websiteSummary: (latest.get("WEBSITE")?.result as AnalysisJson | undefined)?.summary ?? null,
     gbpSummary: (latest.get("GOOGLE_BUSINESS")?.result as AnalysisJson | undefined)?.summary ?? null,
     competitorText: (latest.get("COMPETITOR")?.result as CompJson | undefined)?.explanation ?? null,

@@ -4,18 +4,15 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   ChevronRight,
-  ClipboardList,
-  FolderPlus,
-  Gauge,
-  Inbox,
-  ListChecks,
-  Layers,
-  MoreVertical,
-  Package,
-  Pencil,
+  MapPin,
   Plus,
+  Radar,
+  Search,
+  Settings2,
   Sparkles,
+  Tags,
   Trash2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,479 +23,522 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { ILLER, IL_ILCE } from "@/lib/tr-regions";
 
-// ── Tipler ────────────────────────────────────────────────
-type FolderItem = {
-  id: string;
-  name: string;
-  parentId: string | null;
-  order: number;
-};
-type Segment = {
+type Sector = { name: string; keywords: string[] };
+type Arama = {
   id: string;
   city: string;
   district: string | null;
   sector: string;
   keywords: string[];
-  folderId: string | null;
   lastRunAt: string | null;
+  firmaCount: number;
+  scanState: "bos" | "kismi" | "tamam";
 };
-type FolderNode = FolderItem & { children: FolderNode[] };
-type Selection = "ALL" | "UNFILED" | string; // string = klasör id
+const NONE = "__genel__";
 
-// ── Yardımcılar ───────────────────────────────────────────
+const SCAN_META: Record<Arama["scanState"], { label: string; cls: string }> = {
+  bos: { label: "Taranmadı", cls: "bg-muted text-muted-foreground" },
+  kismi: { label: "Kısmi", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+  tamam: { label: "Tarandı", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
+};
+
 async function api<T>(url: string, method: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
     method,
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error ?? "İşlem başarısız");
-  }
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "İşlem başarısız");
   return res.json();
 }
 
-function buildTree(folders: FolderItem[]): FolderNode[] {
-  const byParent = new Map<string | null, FolderNode[]>();
-  for (const f of folders) {
-    const node: FolderNode = { ...f, children: [] };
-    const list = byParent.get(f.parentId) ?? [];
-    list.push(node);
-    byParent.set(f.parentId, list);
-  }
-  const attach = (parentId: string | null): FolderNode[] =>
-    (byParent.get(parentId) ?? []).map((n) => ({
-      ...n,
-      children: attach(n.id),
-    }));
-  return attach(null);
-}
+type Sel = { il: string | null; ilce: string | null; sektor: string | null };
+const EMPTY_SEL: Sel = { il: null, ilce: null, sektor: null };
 
-function descendantIds(folders: FolderItem[], rootId: string): Set<string> {
-  const out = new Set<string>([rootId]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const f of folders) {
-      if (f.parentId && out.has(f.parentId) && !out.has(f.id)) {
-        out.add(f.id);
-        changed = true;
-      }
-    }
-  }
-  return out;
-}
-
-// ── Ana bileşen ───────────────────────────────────────────
 export function Workspace({
-  initialFolders,
   initialSegments,
+  initialSectors,
 }: {
-  initialFolders: FolderItem[];
-  initialSegments: Segment[];
+  initialSegments: Arama[];
+  initialSectors: Sector[];
 }) {
-  const [folders, setFolders] = useState<FolderItem[]>(initialFolders);
-  const [segments, setSegments] = useState<Segment[]>(initialSegments);
-  const [selected, setSelected] = useState<Selection>("ALL");
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<string | "UNFILED" | null>(null);
+  const [aramalar, setAramalar] = useState<Arama[]>(initialSegments);
+  const [sectors, setSectors] = useState<Sector[]>(initialSectors);
+  const [groupBy, setGroupBy] = useState<"konum" | "sektor">("konum");
+  const [sel, setSel] = useState<Sel>(EMPTY_SEL);
+  const [openNode, setOpenNode] = useState<Set<string>>(new Set());
+  const [q, setQ] = useState("");
+  const [scanFilter, setScanFilter] = useState<Arama["scanState"] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Diyalog durumları
-  const [folderDialog, setFolderDialog] = useState<{
-    open: boolean;
-    parentId: string | null;
-    editId: string | null;
-    value: string;
-  }>({ open: false, parentId: null, editId: null, value: "" });
-  const [segDialog, setSegDialog] = useState({
-    open: false,
-    city: "",
-    district: "",
-    sector: "",
-    keywords: "",
-  });
-
-  const tree = useMemo(() => buildTree(folders), [folders]);
-
-  const visibleSegments = useMemo(() => {
-    if (selected === "ALL") return segments;
-    if (selected === "UNFILED") return segments.filter((s) => !s.folderId);
-    return segments.filter((s) => s.folderId === selected);
-  }, [segments, selected]);
-
-  const selectedFolder =
-    typeof selected === "string" && selected !== "ALL" && selected !== "UNFILED"
-      ? folders.find((f) => f.id === selected)
-      : undefined;
+  const [wiz, setWiz] = useState({ open: false, city: "", district: "", sector: "", kw: [] as string[], kwInput: "" });
+  const [sekDialog, setSekDialog] = useState<{ open: boolean; draft: Sector[] }>({ open: false, draft: [] });
 
   function fail(e: unknown) {
     setError(e instanceof Error ? e.message : "Bir hata oluştu");
     setTimeout(() => setError(null), 4000);
   }
 
-  // ── Klasör işlemleri ──
-  async function submitFolder() {
-    const name = folderDialog.value.trim();
-    if (!name) return;
-    try {
-      if (folderDialog.editId) {
-        const updated = await api<FolderItem>(
-          `/api/folders/${folderDialog.editId}`,
-          "PATCH",
-          { name },
-        );
-        setFolders((fs) =>
-          fs.map((f) => (f.id === updated.id ? { ...f, name: updated.name } : f)),
-        );
-      } else {
-        const created = await api<FolderItem>("/api/folders", "POST", {
-          name,
-          parentId: folderDialog.parentId,
-        });
-        setFolders((fs) => [...fs, created]);
+  // ── Ağaç verisi ──
+  const konumTree = useMemo(() => {
+    const iller = new Map<string, Map<string, number>>();
+    for (const s of aramalar) {
+      const d = s.district ?? NONE;
+      if (!iller.has(s.city)) iller.set(s.city, new Map());
+      const m = iller.get(s.city)!;
+      m.set(d, (m.get(d) ?? 0) + 1);
+    }
+    return [...iller.entries()]
+      .map(([city, m]) => ({
+        key: city,
+        total: [...m.values()].reduce((a, b) => a + b, 0),
+        children: [...m.entries()]
+          .map(([d, n]) => ({ key: d, label: d === NONE ? "Genel" : d, n }))
+          .sort((a, b) => a.label.localeCompare(b.label, "tr")),
+      }))
+      .sort((a, b) => a.key.localeCompare(b.key, "tr"));
+  }, [aramalar]);
+
+  const sektorTree = useMemo(() => {
+    const sekt = new Map<string, Map<string, number>>();
+    for (const s of aramalar) {
+      if (!sekt.has(s.sector)) sekt.set(s.sector, new Map());
+      const m = sekt.get(s.sector)!;
+      m.set(s.city, (m.get(s.city) ?? 0) + 1);
+    }
+    return [...sekt.entries()]
+      .map(([sector, m]) => ({
+        key: sector,
+        total: [...m.values()].reduce((a, b) => a + b, 0),
+        children: [...m.entries()]
+          .map(([c, n]) => ({ key: c, label: c, n }))
+          .sort((a, b) => a.label.localeCompare(b.label, "tr")),
+      }))
+      .sort((a, b) => a.key.localeCompare(b.key, "tr"));
+  }, [aramalar]);
+
+  const tree = groupBy === "konum" ? konumTree : sektorTree;
+
+  // ── Filtre ──
+  const scoped = useMemo(() => {
+    return aramalar.filter((s) => {
+      if (sel.il && s.city !== sel.il) return false;
+      if (sel.ilce && (s.district ?? NONE) !== sel.ilce) return false;
+      if (sel.sektor && s.sector !== sel.sektor) return false;
+      return true;
+    });
+  }, [aramalar, sel]);
+
+  const visible = useMemo(() => {
+    const needle = q.trim().toLocaleLowerCase("tr");
+    // Arama yazılıysa tüm aramalarda ara (ağaç seçiminden bağımsız); değilse seçili kapsam.
+    const base = needle ? aramalar : scoped;
+    return base.filter((s) => {
+      if (scanFilter && s.scanState !== scanFilter) return false;
+      if (needle) {
+        const hay = [s.city, s.district ?? "", s.sector, ...s.keywords].join(" ").toLocaleLowerCase("tr");
+        if (!hay.includes(needle)) return false;
       }
-      setFolderDialog({ open: false, parentId: null, editId: null, value: "" });
-    } catch (e) {
-      fail(e);
+      return true;
+    });
+  }, [aramalar, scoped, q, scanFilter]);
+
+  // Sağ paneli sektöre göre grupla
+  const sectorGroups = useMemo(() => {
+    const m = new Map<string, Arama[]>();
+    for (const s of visible) {
+      const a = m.get(s.sector) ?? [];
+      a.push(s);
+      m.set(s.sector, a);
     }
+    return [...m.entries()]
+      .map(([sector, items]) => ({ sector, items }))
+      .sort((a, b) => b.items.length - a.items.length || a.sector.localeCompare(b.sector, "tr"));
+  }, [visible]);
+
+  function toggleNode(key: string) {
+    setOpenNode((s) => {
+      const n = new Set(s);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
+  }
+  function pickParent(key: string) {
+    setSel(groupBy === "konum" ? { il: key, ilce: null, sektor: null } : { il: null, ilce: null, sektor: key });
+  }
+  function pickChild(parent: string, child: string) {
+    setSel(
+      groupBy === "konum"
+        ? { il: parent, ilce: child, sektor: null }
+        : { il: child, ilce: null, sektor: parent },
+    );
+  }
+  function switchMode(mode: "konum" | "sektor") {
+    setGroupBy(mode);
+    setSel(EMPTY_SEL);
+    setOpenNode(new Set());
   }
 
-  async function deleteFolder(id: string) {
-    if (!confirm("Klasör silinsin mi? Alt klasörler de silinir; segmentler klasörsüz kalır."))
-      return;
-    try {
-      await api(`/api/folders/${id}`, "DELETE");
-      const removed = descendantIds(folders, id);
-      setFolders((fs) => fs.filter((f) => !removed.has(f.id)));
-      setSegments((ss) =>
-        ss.map((s) => (s.folderId && removed.has(s.folderId) ? { ...s, folderId: null } : s)),
-      );
-      if (typeof selected === "string" && removed.has(selected)) setSelected("ALL");
-    } catch (e) {
-      fail(e);
-    }
-  }
-
-  // ── Segment işlemleri ──
-  async function submitSegment() {
-    const city = segDialog.city.trim();
-    const sector = segDialog.sector.trim();
+  // ── Arama oluştur ──
+  async function createArama() {
+    const city = wiz.city.trim();
+    const sector = wiz.sector.trim();
     if (!city || !sector) return;
     try {
-      const created = await api<Segment>("/api/searches", "POST", {
+      const created = await api<Arama>("/api/searches", "POST", {
         city,
-        district: segDialog.district,
+        district: wiz.district.trim() || null,
         sector,
-        keywords: segDialog.keywords
-          .split(",")
-          .map((k) => k.trim())
-          .filter(Boolean),
-        folderId: selectedFolder ? selectedFolder.id : null,
+        keywords: wiz.kw,
       });
-      setSegments((ss) => [
-        { ...created, lastRunAt: null },
-        ...ss,
-      ]);
-      setSegDialog({ open: false, city: "", district: "", sector: "", keywords: "" });
+      setAramalar((ss) => [{ ...created, lastRunAt: null, firmaCount: 0, scanState: "bos" }, ...ss]);
+      setWiz({ open: false, city: "", district: "", sector: "", kw: [], kwInput: "" });
+      switchMode("konum");
+      setSel({ il: city, ilce: wiz.district.trim() || NONE, sektor: null });
+      setOpenNode(new Set([city]));
     } catch (e) {
       fail(e);
     }
   }
-
-  async function deleteSegment(id: string) {
+  async function deleteArama(id: string) {
     try {
       await api(`/api/searches/${id}`, "DELETE");
-      setSegments((ss) => ss.filter((s) => s.id !== id));
+      setAramalar((ss) => ss.filter((s) => s.id !== id));
     } catch (e) {
       fail(e);
     }
   }
+  function addKw(k: string) {
+    const t = k.trim();
+    if (t && !wiz.kw.includes(t)) setWiz((w) => ({ ...w, kw: [...w.kw, t], kwInput: "" }));
+  }
+  function chooseSector(name: string) {
+    const found = sectors.find((s) => s.name === name);
+    setWiz((w) => ({ ...w, sector: name, kw: found ? [...found.keywords] : w.kw }));
+  }
 
-  async function moveSegment(id: string, folderId: string | null) {
-    const current = segments.find((s) => s.id === id);
-    if (!current || current.folderId === folderId) return;
-    setSegments((ss) => ss.map((s) => (s.id === id ? { ...s, folderId } : s)));
+  // ── Sektör kataloğu ──
+  async function saveSectors() {
     try {
-      await api(`/api/searches/${id}`, "PATCH", { folderId });
+      const { sectors: saved } = await api<{ sectors: Sector[] }>("/api/sectors", "PUT", {
+        sectors: sekDialog.draft,
+      });
+      setSectors(saved);
+      setSekDialog({ open: false, draft: [] });
     } catch (e) {
-      setSegments((ss) =>
-        ss.map((s) => (s.id === id ? { ...s, folderId: current.folderId } : s)),
-      );
       fail(e);
     }
   }
 
-  function onDropTo(folderId: string | null, key: string | "UNFILED") {
-    return (e: React.DragEvent) => {
-      e.preventDefault();
-      setDropTarget(null);
-      if (dragId) moveSegment(dragId, folderId);
-      setDragId(null);
-    };
-  }
-  function allowDrop(key: string | "UNFILED") {
-    return (e: React.DragEvent) => {
-      e.preventDefault();
-      setDropTarget(key);
-    };
-  }
+  const baslik = q.trim()
+    ? `“${q.trim()}” araması`
+    : sel.sektor
+      ? `${sel.sektor}${sel.il ? " · " + sel.il : ""}`
+      : sel.il
+        ? `${sel.il}${sel.ilce && sel.ilce !== NONE ? " · " + sel.ilce : ""}`
+        : "Tüm aramalar";
 
-  const count = (key: Selection) =>
-    key === "ALL"
-      ? segments.length
-      : key === "UNFILED"
-        ? segments.filter((s) => !s.folderId).length
-        : segments.filter((s) => s.folderId === key).length;
+  const ilceler = wiz.city ? (IL_ILCE[wiz.city] ?? []) : [];
 
   return (
     <div className="flex min-h-full flex-1">
-      {/* ── Kenar çubuğu: klasör ağacı ── */}
-      <aside className="bg-muted/30 flex w-72 shrink-0 flex-col border-r">
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <span className="flex items-center gap-2 font-semibold">
-            <Layers className="size-4" /> Çalışma Alanı
-          </span>
-          <div className="flex items-center gap-1">
-            <Link
-              href="/calisma-listem"
-              title="Çalışma Listem"
-              className="hover:bg-accent rounded-md p-2"
-            >
-              <ClipboardList className="size-4" />
-            </Link>
-            <Link
-              href="/gorevler"
-              title="Görev Kutusu"
-              className="hover:bg-accent rounded-md p-2"
-            >
-              <ListChecks className="size-4" />
-            </Link>
-            <Link
-              href="/hizmetler"
-              title="Hizmet Listesi"
-              className="hover:bg-accent rounded-md p-2"
-            >
-              <Package className="size-4" />
-            </Link>
-            <Link
-              href="/kullanim"
-              title="Kullanım & Bütçe"
-              className="hover:bg-accent rounded-md p-2"
-            >
-              <Gauge className="size-4" />
-            </Link>
-            <Link
-              href="/ayarlar"
-              title="AI Sağlayıcı"
-              className="hover:bg-accent rounded-md p-2"
-            >
-              <Sparkles className="size-4" />
-            </Link>
-            <Button
-              size="icon"
-              variant="ghost"
-              title="Yeni klasör"
-              onClick={() =>
-                setFolderDialog({ open: true, parentId: null, editId: null, value: "" })
-              }
-            >
-              <FolderPlus className="size-4" />
-            </Button>
-          </div>
+      {/* ── Sol: grup ağacı ── */}
+      <aside className="bg-sidebar/50 flex w-64 shrink-0 flex-col border-r">
+        <div className="flex items-center gap-1 p-2">
+          <button
+            onClick={() => switchMode("konum")}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium ${
+              groupBy === "konum" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            <MapPin className="size-4" /> Konum
+          </button>
+          <button
+            onClick={() => switchMode("sektor")}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium ${
+              groupBy === "sektor" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            <Tags className="size-4" /> Sektör
+          </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-2 text-sm">
-          <SidebarItem
-            active={selected === "ALL"}
-            onClick={() => setSelected("ALL")}
-            icon={<Layers className="size-4" />}
-            label="Tümü"
-            count={count("ALL")}
-          />
-
-          {tree.map((node) => (
-            <FolderRow
-              key={node.id}
-              node={node}
-              depth={0}
-              selected={selected}
-              dropTarget={dropTarget}
-              count={count}
-              onSelect={setSelected}
-              onDragOver={allowDrop}
-              onDragLeave={() => setDropTarget(null)}
-              onDrop={onDropTo}
-              onAddChild={(parentId) =>
-                setFolderDialog({ open: true, parentId, editId: null, value: "" })
-              }
-              onRename={(f) =>
-                setFolderDialog({ open: true, parentId: null, editId: f.id, value: f.name })
-              }
-              onDelete={deleteFolder}
-            />
-          ))}
-
-          <div
-            onDragOver={allowDrop("UNFILED")}
-            onDragLeave={() => setDropTarget(null)}
-            onDrop={onDropTo(null, "UNFILED")}
-            className={dropTarget === "UNFILED" ? "rounded-md ring-2 ring-orange-400" : ""}
+        <nav className="flex-1 space-y-0.5 overflow-y-auto p-2 pt-0 text-sm">
+          <button
+            onClick={() => setSel(EMPTY_SEL)}
+            className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 ${
+              !sel.il && !sel.sektor ? "bg-primary/10 text-primary font-medium" : "hover:bg-accent"
+            }`}
           >
-            <SidebarItem
-              active={selected === "UNFILED"}
-              onClick={() => setSelected("UNFILED")}
-              icon={<Inbox className="size-4" />}
-              label="Klasörsüz"
-              count={count("UNFILED")}
-            />
-          </div>
+            <Radar className="size-4" />
+            <span className="flex-1 text-left">Tüm aramalar</span>
+            <span className="text-xs tabular-nums opacity-70">{aramalar.length}</span>
+          </button>
+
+          {tree.map((node) => {
+            const open = openNode.has(node.key);
+            const activeParent =
+              groupBy === "konum" ? sel.il === node.key && !sel.ilce : sel.sektor === node.key && !sel.il;
+            const activeInParent =
+              groupBy === "konum" ? sel.il === node.key : sel.sektor === node.key;
+            return (
+              <div key={node.key}>
+                <div
+                  className={`group flex items-center rounded-lg ${
+                    activeParent ? "bg-primary/10 text-primary" : "hover:bg-accent"
+                  }`}
+                >
+                  <button onClick={() => toggleNode(node.key)} className="p-1.5" aria-label="aç/kapat">
+                    <ChevronRight className={`size-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      pickParent(node.key);
+                      if (!open) toggleNode(node.key);
+                    }}
+                    className="flex flex-1 items-center gap-2 py-1.5 pr-2 text-left"
+                  >
+                    <span className={`flex-1 truncate ${activeParent ? "font-medium" : ""}`}>{node.key}</span>
+                    <span className="text-xs tabular-nums opacity-70">{node.total}</span>
+                  </button>
+                </div>
+                {open &&
+                  node.children.map((c) => {
+                    const activeChild =
+                      groupBy === "konum"
+                        ? activeInParent && sel.ilce === c.key
+                        : activeInParent && sel.il === c.key;
+                    return (
+                      <button
+                        key={c.key}
+                        onClick={() => pickChild(node.key, c.key)}
+                        className={`flex w-full items-center gap-2 rounded-lg py-1.5 pr-2 pl-9 text-left ${
+                          activeChild ? "bg-primary/10 text-primary font-medium" : "hover:bg-accent"
+                        }`}
+                      >
+                        <span className="flex-1 truncate">{c.label}</span>
+                        <span className="text-xs tabular-nums opacity-70">{c.n}</span>
+                      </button>
+                    );
+                  })}
+              </div>
+            );
+          })}
+
+          {tree.length === 0 && (
+            <p className="text-muted-foreground px-2.5 py-6 text-center text-xs">Henüz arama yok.</p>
+          )}
         </nav>
+
+        <div className="border-t p-2">
+          <button
+            onClick={() => setSekDialog({ open: true, draft: sectors.map((s) => ({ ...s, keywords: [...s.keywords] })) })}
+            className="text-muted-foreground hover:bg-accent flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm"
+          >
+            <Settings2 className="size-4" /> Sektörleri yönet
+          </button>
+        </div>
       </aside>
 
-      {/* ── Ana alan: segment kartları ── */}
-      <section className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between border-b px-6 py-4">
+      {/* ── Sağ: merkez ── */}
+      <section className="flex min-w-0 flex-1 flex-col">
+        <header className="flex flex-wrap items-end justify-between gap-3 border-b px-6 py-4">
           <div>
-            <h1 className="text-lg font-semibold">
-              {selected === "ALL"
-                ? "Tüm segmentler"
-                : selected === "UNFILED"
-                  ? "Klasörsüz segmentler"
-                  : (selectedFolder?.name ?? "Segmentler")}
-            </h1>
-            <p className="text-muted-foreground text-sm">
-              {visibleSegments.length} arama segmenti
-            </p>
+            <h1 className="font-heading text-2xl font-bold">{baslik}</h1>
+            <p className="text-muted-foreground text-sm">{visible.length} arama</p>
           </div>
-          <Button onClick={() => setSegDialog((d) => ({ ...d, open: true }))}>
-            <Plus className="size-4" /> Yeni segment
+          <Button onClick={() => setWiz((w) => ({ ...w, open: true, city: groupBy === "konum" && sel.il ? sel.il : "", sector: groupBy === "sektor" && sel.sektor ? sel.sektor : "" }))}>
+            <Plus className="size-4" /> Yeni arama
           </Button>
         </header>
 
+        <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3">
+          <div className="relative min-w-52 flex-1">
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+            <Input placeholder="Ara…" value={q} onChange={(e) => setQ(e.target.value)} className="pl-9" />
+          </div>
+          <div className="flex items-center gap-1">
+            {(["bos", "kismi", "tamam"] as const).map((st) => (
+              <button
+                key={st}
+                onClick={() => setScanFilter((f) => (f === st ? null : st))}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                  scanFilter === st ? "border-primary/40 bg-primary/10 text-primary" : "hover:bg-accent"
+                }`}
+              >
+                {SCAN_META[st].label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-6">
-          {visibleSegments.length === 0 ? (
-            <div className="text-muted-foreground flex h-full min-h-64 flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-center">
-              <Layers className="size-8 opacity-40" />
-              <p>Bu görünümde segment yok.</p>
-              <p className="text-xs">
-                “Yeni segment” ile il/ilçe + sektör araması ekleyin. (Tarama #4’te.)
-              </p>
+          {visible.length === 0 ? (
+            <div className="text-muted-foreground flex h-full min-h-64 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed text-center">
+              <Sparkles className="size-8 opacity-40" />
+              <p>{aramalar.length === 0 ? "İlk aramanı oluştur." : "Bu süzgeçle arama yok."}</p>
+              <Button variant="outline" className="mt-1" onClick={() => setWiz((w) => ({ ...w, open: true }))}>
+                <Plus className="size-4" /> Yeni arama
+              </Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {visibleSegments.map((s) => (
-                <SegmentCard
-                  key={s.id}
-                  segment={s}
-                  onDragStart={() => setDragId(s.id)}
-                  onDragEnd={() => {
-                    setDragId(null);
-                    setDropTarget(null);
-                  }}
-                  onDelete={() => deleteSegment(s.id)}
-                />
+            <div className="flex flex-col gap-7">
+              {sectorGroups.map((g) => (
+                <section key={g.sector}>
+                  <div className="mb-3 flex items-center gap-2">
+                    <Tags className="text-primary size-4" />
+                    <h2 className="font-heading font-bold">{g.sector}</h2>
+                    <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-medium tabular-nums">
+                      {g.items.length}
+                    </span>
+                    <div className="bg-border ml-1 h-px flex-1" />
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {g.items.map((s) => (
+                      <AramaCard key={s.id} s={s} onDelete={() => deleteArama(s.id)} />
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
           )}
         </div>
       </section>
 
-      {/* Hata bildirimi */}
       {error && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
           {error}
         </div>
       )}
 
-      {/* ── Klasör diyaloğu ── */}
-      <Dialog
-        open={folderDialog.open}
-        onOpenChange={(open) => setFolderDialog((d) => ({ ...d, open }))}
-      >
-        <DialogContent>
+      {/* ── Oluşturma sihirbazı ── */}
+      <Dialog open={wiz.open} onOpenChange={(open) => setWiz((w) => ({ ...w, open }))}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>
-              {folderDialog.editId ? "Klasörü yeniden adlandır" : "Yeni klasör"}
-            </DialogTitle>
+            <DialogTitle className="font-heading">Yeni arama</DialogTitle>
           </DialogHeader>
-          <Input
-            autoFocus
-            placeholder="Klasör adı (ör. İstanbul, Diş Klinikleri…)"
-            value={folderDialog.value}
-            onChange={(e) => setFolderDialog((d) => ({ ...d, value: e.target.value }))}
-            onKeyDown={(e) => e.key === "Enter" && submitFolder()}
-          />
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() =>
-                setFolderDialog({ open: false, parentId: null, editId: null, value: "" })
-              }
-            >
-              Vazgeç
-            </Button>
-            <Button onClick={submitFolder}>Kaydet</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Segment diyaloğu ── */}
-      <Dialog
-        open={segDialog.open}
-        onOpenChange={(open) => setSegDialog((d) => ({ ...d, open }))}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Yeni arama segmenti</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-3">
+          <div className="grid gap-4">
             <div className="grid grid-cols-2 gap-3">
-              <Input
-                placeholder="Şehir *"
-                value={segDialog.city}
-                onChange={(e) => setSegDialog((d) => ({ ...d, city: e.target.value }))}
-              />
-              <Input
-                placeholder="İlçe (opsiyonel)"
-                value={segDialog.district}
-                onChange={(e) => setSegDialog((d) => ({ ...d, district: e.target.value }))}
-              />
+              <label className="space-y-1 text-sm">
+                <span className="text-muted-foreground">İl *</span>
+                <select
+                  value={wiz.city}
+                  onChange={(e) => setWiz((w) => ({ ...w, city: e.target.value, district: "" }))}
+                  className="bg-background h-9 w-full rounded-lg border px-2 text-sm"
+                >
+                  <option value="">Seç…</option>
+                  {ILLER.map((i) => (
+                    <option key={i} value={i}>{i}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-muted-foreground">İlçe</span>
+                <select
+                  value={wiz.district}
+                  onChange={(e) => setWiz((w) => ({ ...w, district: e.target.value }))}
+                  disabled={!wiz.city}
+                  className="bg-background h-9 w-full rounded-lg border px-2 text-sm disabled:opacity-50"
+                >
+                  <option value="">Tümü / Genel</option>
+                  {ilceler.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </label>
             </div>
-            <Input
-              placeholder="Sektör * (ör. diş kliniği)"
-              value={segDialog.sector}
-              onChange={(e) => setSegDialog((d) => ({ ...d, sector: e.target.value }))}
-            />
-            <Input
-              placeholder="Anahtar kelimeler (virgülle: diş hekimi, ağız diş sağlığı)"
-              value={segDialog.keywords}
-              onChange={(e) => setSegDialog((d) => ({ ...d, keywords: e.target.value }))}
-            />
-            {selectedFolder && (
-              <p className="text-muted-foreground text-xs">
-                “{selectedFolder.name}” klasörüne eklenecek.
-              </p>
-            )}
+
+            <label className="space-y-1 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Sektör *</span>
+                <button
+                  onClick={() => setSekDialog({ open: true, draft: sectors.map((s) => ({ ...s, keywords: [...s.keywords] })) })}
+                  className="text-primary text-xs hover:underline"
+                >
+                  + sektör yönet
+                </button>
+              </div>
+              <select
+                value={wiz.sector}
+                onChange={(e) => chooseSector(e.target.value)}
+                className="bg-background h-9 w-full rounded-lg border px-2 text-sm"
+              >
+                <option value="">Seç…</option>
+                {sectors.map((s) => (
+                  <option key={s.name} value={s.name}>{s.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <div className="space-y-1 text-sm">
+              <span className="text-muted-foreground">Anahtar kelimeler</span>
+              <div className="flex flex-wrap items-center gap-1.5 rounded-lg border p-2">
+                {wiz.kw.map((k) => (
+                  <span key={k} className="bg-primary/10 text-primary inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs">
+                    {k}
+                    <button onClick={() => setWiz((w) => ({ ...w, kw: w.kw.filter((x) => x !== k) }))}>
+                      <X className="size-3" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  value={wiz.kwInput}
+                  onChange={(e) => setWiz((w) => ({ ...w, kwInput: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === ",") {
+                      e.preventDefault();
+                      addKw(wiz.kwInput);
+                    }
+                  }}
+                  placeholder={wiz.kw.length === 0 ? "yaz + Enter…" : ""}
+                  className="min-w-24 flex-1 bg-transparent text-sm outline-none"
+                />
+              </div>
+              <p className="text-muted-foreground text-xs">Sektör seçince önerilenler otomatik gelir; ekle/çıkar.</p>
+            </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() =>
-                setSegDialog({ open: false, city: "", district: "", sector: "", keywords: "" })
-              }
-            >
+            <Button variant="ghost" onClick={() => setWiz({ open: false, city: "", district: "", sector: "", kw: [], kwInput: "" })}>
               Vazgeç
             </Button>
-            <Button onClick={submitSegment}>Ekle</Button>
+            <Button onClick={createArama} disabled={!wiz.city.trim() || !wiz.sector.trim()}>
+              Oluştur
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Sektör kataloğu yönetimi ── */}
+      <Dialog open={sekDialog.open} onOpenChange={(open) => setSekDialog((d) => ({ ...d, open }))}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-heading">Sektörler</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+            {sekDialog.draft.map((s, i) => (
+              <SectorEditor
+                key={i}
+                sector={s}
+                onChange={(next) =>
+                  setSekDialog((d) => ({ ...d, draft: d.draft.map((x, j) => (j === i ? next : x)) }))
+                }
+                onRemove={() => setSekDialog((d) => ({ ...d, draft: d.draft.filter((_, j) => j !== i) }))}
+              />
+            ))}
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setSekDialog((d) => ({ ...d, draft: [...d.draft, { name: "", keywords: [] }] }))}
+            >
+              <Plus className="size-4" /> Sektör ekle
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSekDialog({ open: false, draft: [] })}>Vazgeç</Button>
+            <Button onClick={saveSectors}>Kaydet</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -506,193 +546,100 @@ export function Workspace({
   );
 }
 
-// ── Alt bileşenler ────────────────────────────────────────
-function SidebarItem({
-  active,
-  onClick,
-  icon,
-  label,
-  count,
+// ── Sektör satırı editörü ──
+function SectorEditor({
+  sector,
+  onChange,
+  onRemove,
 }: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-  count: number;
+  sector: Sector;
+  onChange: (s: Sector) => void;
+  onRemove: () => void;
 }) {
+  const [kwInput, setKwInput] = useState("");
+  function addKw(k: string) {
+    const t = k.trim();
+    if (t && !sector.keywords.includes(t)) onChange({ ...sector, keywords: [...sector.keywords, t] });
+    setKwInput("");
+  }
   return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left ${
-        active ? "bg-accent font-medium" : "hover:bg-accent/50"
-      }`}
-    >
-      {icon}
-      <span className="flex-1 truncate">{label}</span>
-      <span className="text-muted-foreground text-xs">{count}</span>
-    </button>
-  );
-}
-
-function FolderRow({
-  node,
-  depth,
-  selected,
-  dropTarget,
-  count,
-  onSelect,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  onAddChild,
-  onRename,
-  onDelete,
-}: {
-  node: FolderNode;
-  depth: number;
-  selected: Selection;
-  dropTarget: string | "UNFILED" | null;
-  count: (key: Selection) => number;
-  onSelect: (s: Selection) => void;
-  onDragOver: (key: string) => (e: React.DragEvent) => void;
-  onDragLeave: () => void;
-  onDrop: (folderId: string | null, key: string) => (e: React.DragEvent) => void;
-  onAddChild: (parentId: string) => void;
-  onRename: (f: FolderItem) => void;
-  onDelete: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(true);
-  const active = selected === node.id;
-  const isDrop = dropTarget === node.id;
-
-  return (
-    <div>
-      <div
-        onDragOver={onDragOver(node.id)}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop(node.id, node.id)}
-        className={`group flex items-center gap-1 rounded-md pr-1 ${
-          active ? "bg-accent" : "hover:bg-accent/50"
-        } ${isDrop ? "ring-2 ring-orange-400" : ""}`}
-        style={{ paddingLeft: depth * 12 }}
-      >
-        <button
-          onClick={() => setOpen((o) => !o)}
-          className="p-1"
-          aria-label={open ? "Kapat" : "Aç"}
-        >
-          <ChevronRight
-            className={`size-3.5 transition-transform ${open ? "rotate-90" : ""} ${
-              node.children.length === 0 ? "opacity-25" : ""
-            }`}
-          />
+    <div className="rounded-lg border p-3">
+      <div className="flex items-center gap-2">
+        <Input
+          placeholder="Sektör adı"
+          value={sector.name}
+          onChange={(e) => onChange({ ...sector, name: e.target.value })}
+        />
+        <button onClick={onRemove} className="text-muted-foreground p-1 hover:text-red-600" title="Sil">
+          <Trash2 className="size-4" />
         </button>
-        <button
-          onClick={() => onSelect(node.id)}
-          className="flex flex-1 items-center gap-2 py-1.5 text-left"
-        >
-          <span className={`flex-1 truncate ${active ? "font-medium" : ""}`}>
-            {node.name}
-          </span>
-          <span className="text-muted-foreground text-xs">{count(node.id)}</span>
-        </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger className="rounded p-1 opacity-0 group-hover:opacity-100 data-[popup-open]:opacity-100">
-            <MoreVertical className="size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onAddChild(node.id)}>
-              <FolderPlus className="size-4" /> Alt klasör
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onRename(node)}>
-              <Pencil className="size-4" /> Yeniden adlandır
-            </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(node.id)}>
-              <Trash2 className="size-4" /> Sil
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
-
-      {open &&
-        node.children.map((child) => (
-          <FolderRow
-            key={child.id}
-            node={child}
-            depth={depth + 1}
-            selected={selected}
-            dropTarget={dropTarget}
-            count={count}
-            onSelect={onSelect}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
-            onAddChild={onAddChild}
-            onRename={onRename}
-            onDelete={onDelete}
-          />
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-lg border p-2">
+        {sector.keywords.map((k) => (
+          <span key={k} className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs">
+            {k}
+            <button onClick={() => onChange({ ...sector, keywords: sector.keywords.filter((x) => x !== k) })}>
+              <X className="size-3" />
+            </button>
+          </span>
         ))}
+        <input
+          value={kwInput}
+          onChange={(e) => setKwInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault();
+              addKw(kwInput);
+            }
+          }}
+          placeholder="anahtar kelime + Enter"
+          className="min-w-28 flex-1 bg-transparent text-sm outline-none"
+        />
+      </div>
     </div>
   );
 }
 
-function SegmentCard({
-  segment,
-  onDragStart,
-  onDragEnd,
-  onDelete,
-}: {
-  segment: Segment;
-  onDragStart: () => void;
-  onDragEnd: () => void;
-  onDelete: () => void;
-}) {
+// ── Arama kartı ──
+function AramaCard({ s, onDelete }: { s: Arama; onDelete: () => void }) {
+  const scan = SCAN_META[s.scanState];
   return (
-    <div
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        onDragStart();
-      }}
-      onDragEnd={onDragEnd}
-      className="bg-card group flex cursor-grab flex-col gap-2 rounded-lg border p-4 active:cursor-grabbing"
-    >
+    <div className="bg-card group relative flex flex-col gap-3 rounded-xl border p-4 transition-colors hover:border-primary/40">
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <Link
-            href={`/calisma-alani/segment/${segment.id}`}
-            className="font-medium hover:underline"
-          >
-            {segment.city}
-            {segment.district ? ` · ${segment.district}` : ""}
-          </Link>
-          <p className="text-muted-foreground text-sm">{segment.sector}</p>
-        </div>
+        <Link href={`/calisma-alani/segment/${s.id}`} className="min-w-0">
+          <div className="font-heading truncate font-semibold group-hover:text-primary">
+            {s.city}{s.district ? ` · ${s.district}` : ""}
+          </div>
+          <p className="text-muted-foreground truncate text-sm">{s.sector}</p>
+        </Link>
         <button
           onClick={onDelete}
-          className="text-muted-foreground p-1 opacity-0 hover:text-red-600 group-hover:opacity-100"
-          title="Segmenti sil"
+          className="text-muted-foreground shrink-0 p-1 opacity-0 hover:text-red-600 group-hover:opacity-100"
+          title="Aramayı sil"
         >
           <Trash2 className="size-4" />
         </button>
       </div>
 
-      {segment.keywords.length > 0 && (
+      {s.keywords.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {segment.keywords.map((k) => (
-            <span
-              key={k}
-              className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-xs"
-            >
-              {k}
-            </span>
+          {s.keywords.slice(0, 4).map((k) => (
+            <span key={k} className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-xs">{k}</span>
           ))}
         </div>
       )}
 
-      <p className="text-muted-foreground mt-1 text-xs">
-        {segment.lastRunAt ? "Çalıştırıldı" : "Henüz çalıştırılmadı"}
-      </p>
+      <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${scan.cls}`}>{scan.label}</span>
+        <span className="text-muted-foreground text-xs tabular-nums">{s.firmaCount} firma</span>
+      </div>
+
+      <Link
+        href={`/calisma-alani/segment/${s.id}`}
+        className="text-primary inline-flex items-center gap-1 text-sm font-medium hover:gap-2"
+      >
+        Aç <ChevronRight className="size-4" />
+      </Link>
     </div>
   );
 }

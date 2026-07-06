@@ -60,16 +60,73 @@ export async function setAiProvider(provider: AiProviderName): Promise<void> {
   });
 }
 
-// Sağlayıcının anahtarı .env'de tanımlı mı?
-export function providerConfigured(provider: AiProviderName): boolean {
+// ─── API anahtar yönetimi (çoklu + otomatik rotasyon) ───
+// Anahtarlar AppSetting("ai.keys")'te tutulur; .env her zaman yedek olarak eklenir.
+type KeysConfig = { gemini: string[]; anthropic: string | null };
+
+async function getKeysConfig(): Promise<KeysConfig> {
+  const row = await prisma.appSetting.findUnique({ where: { key: "ai.keys" } });
+  const v = row?.value as { gemini?: unknown; anthropic?: unknown } | null;
+  return {
+    gemini: Array.isArray(v?.gemini)
+      ? (v!.gemini as unknown[]).map((k) => String(k).trim()).filter(Boolean)
+      : [],
+    anthropic: typeof v?.anthropic === "string" && v.anthropic.trim() ? v.anthropic.trim() : null,
+  };
+}
+
+// UI'nin düzenlediği (kayıtlı) anahtarlar + .env yedeği.
+export async function getStoredKeys(): Promise<{
+  gemini: string[];
+  anthropic: string;
+  envGemini: boolean;
+  envAnthropic: boolean;
+}> {
+  const cfg = await getKeysConfig();
+  return {
+    gemini: cfg.gemini,
+    anthropic: cfg.anthropic ?? "",
+    envGemini: !!process.env.GEMINI_API_KEY,
+    envAnthropic: !!process.env.ANTHROPIC_API_KEY,
+  };
+}
+
+export async function setStoredKeys(gemini: string[], anthropic: string | null): Promise<void> {
+  const value: KeysConfig = {
+    gemini: gemini.map((k) => k.trim()).filter(Boolean),
+    anthropic: (anthropic ?? "").trim() || null,
+  };
+  await prisma.appSetting.upsert({
+    where: { key: "ai.keys" },
+    create: { key: "ai.keys", value },
+    update: { value },
+  });
+}
+
+// Etkin Gemini anahtar listesi (rotasyon sırası): önce kayıtlılar, sonra .env.
+async function getGeminiKeys(): Promise<string[]> {
+  const cfg = await getKeysConfig();
+  const env = process.env.GEMINI_API_KEY;
+  return [...new Set([...cfg.gemini, ...(env ? [env] : [])])];
+}
+async function getAnthropicKey(): Promise<string | null> {
+  const cfg = await getKeysConfig();
+  return cfg.anthropic ?? process.env.ANTHROPIC_API_KEY ?? null;
+}
+
+// Sağlayıcının en az bir anahtarı var mı?
+export async function providerConfigured(provider: AiProviderName): Promise<boolean> {
   return provider === "anthropic"
-    ? !!process.env.ANTHROPIC_API_KEY
-    : !!process.env.GEMINI_API_KEY;
+    ? !!(await getAnthropicKey())
+    : (await getGeminiKeys()).length > 0;
 }
 
 function missingKeyError(provider: AiProviderName): Error {
-  const key = provider === "anthropic" ? "ANTHROPIC_API_KEY" : "GEMINI_API_KEY";
-  return new Error(`${key} tanımlı değil (.env).`);
+  return new Error(
+    provider === "anthropic"
+      ? "Claude (Anthropic) anahtarı tanımlı değil — Ayarlar’dan ekleyin."
+      : "Gemini anahtarı tanımlı değil — Ayarlar’dan ekleyin.",
+  );
 }
 
 // ─── Anthropic ───
@@ -79,7 +136,8 @@ async function genAnthropic(
   maxTokens: number,
 ): Promise<GenerateResult> {
   const model = AI_MODELS.anthropic[tier];
-  const client = new Anthropic(); // ANTHROPIC_API_KEY env'den
+  const key = await getAnthropicKey();
+  const client = new Anthropic(key ? { apiKey: key } : {});
   const res = await client.messages.create({
     model,
     max_tokens: maxTokens,
@@ -114,30 +172,38 @@ async function genGemini(
   };
   if (input.system) body.systemInstruction = { parts: [{ text: input.system }] };
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": process.env.GEMINI_API_KEY!,
-    },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
+  const keys = await getGeminiKeys();
+  if (keys.length === 0) throw missingKeyError("gemini");
+
+  // Kota (429) gelen anahtarı atla, sıradaki anahtarla dene (otomatik rotasyon).
+  let quotaHit = 0;
+  for (const key of keys) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      const parts = data.candidates?.[0]?.content?.parts ?? [];
+      const text = parts.map((p: { text?: string }) => p.text ?? "").join("").trim();
+      return { text, provider: "gemini", model };
+    }
+    if (res.status === 429) {
+      quotaHit++;
+      continue; // bu anahtar kotada → sıradakini dene
+    }
     throw new Error(data?.error?.message ?? `Gemini hatası (${res.status})`);
   }
-  const parts = data.candidates?.[0]?.content?.parts ?? [];
-  const text = parts
-    .map((p: { text?: string }) => p.text ?? "")
-    .join("")
-    .trim();
-  return { text, provider: "gemini", model };
+  throw new Error(
+    `Tüm Gemini anahtarları (${quotaHit}/${keys.length}) kotada. Ayarlar’dan yeni anahtar ekleyin, yarın tekrar deneyin ya da Claude’a geçin.`,
+  );
 }
 
 // Ana giriş: aktif sağlayıcıyla metin üret.
 export async function generateText(input: GenerateInput): Promise<GenerateResult> {
   const provider = await getAiProvider();
-  if (!providerConfigured(provider)) throw missingKeyError(provider);
+  if (!(await providerConfigured(provider))) throw missingKeyError(provider);
   const tier = input.tier ?? "complex";
   const maxTokens = input.maxTokens ?? 1024;
   return provider === "anthropic"

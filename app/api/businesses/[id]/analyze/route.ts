@@ -4,6 +4,7 @@ import { placeDetails } from "@/lib/places";
 import { runPageSpeed } from "@/lib/pagespeed";
 import { observeSite } from "@/lib/browser";
 import { computeGbpAnalysis, computeWebsiteAnalysis } from "@/lib/analysis";
+import { hasRealWebsite } from "@/lib/website";
 import { generateText } from "@/lib/ai";
 import { logActivity } from "@/lib/business";
 import { getCaps, getDailyUsage, incrementUsage } from "@/lib/quota";
@@ -86,9 +87,12 @@ export async function POST(req: Request, { params }: Ctx) {
   }
 
   if (kind === "WEBSITE") {
-    if (!business.website) {
+    if (!hasRealWebsite(business.website)) {
       return NextResponse.json(
-        { error: "Bu firmanın web sitesi yok — website analizi yapılamaz." },
+        {
+          error:
+            "Bu firmanın gerçek web sitesi yok (sosyal medya / rehber sayfası) — website analizi yapılamaz.",
+        },
         { status: 400 },
       );
     }
@@ -102,8 +106,8 @@ export async function POST(req: Request, { params }: Ctx) {
     try {
       // Gerçek tarayıcı gözlemi + PageSpeed paralel.
       const [obs, ps] = await Promise.all([
-        observeSite(business.website),
-        runPageSpeed(business.website).catch(() => ({
+        observeSite(business.website!),
+        runPageSpeed(business.website!).catch(() => ({
           performance: null,
           seo: null,
           accessibility: null,
@@ -149,7 +153,7 @@ export async function POST(req: Request, { params }: Ctx) {
     });
     if (rivals.length === 0) {
       return NextResponse.json(
-        { error: "Aynı segmentte kıyaslanacak rakip firma bulunamadı." },
+        { error: "Aynı aramada kıyaslanacak rakip firma bulunamadı." },
         { status: 400 },
       );
     }
@@ -159,7 +163,7 @@ export async function POST(req: Request, { params }: Ctx) {
         name: business.name,
         rating: business.googleRating,
         reviews: business.googleReviews,
-        hasWebsite: !!business.website,
+        hasWebsite: hasRealWebsite(business.website),
         score: business.coarseScore,
         self: true,
       },
@@ -167,7 +171,7 @@ export async function POST(req: Request, { params }: Ctx) {
         name: r.name,
         rating: r.googleRating,
         reviews: r.googleReviews,
-        hasWebsite: !!r.website,
+        hasWebsite: hasRealWebsite(r.website),
         score: r.coarseScore,
         self: false,
       })),

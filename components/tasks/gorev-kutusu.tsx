@@ -88,7 +88,7 @@ export function GorevKutusu({ initial }: { initial: Task[] }) {
           href="/calisma-alani"
           className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1 text-sm"
         >
-          <ArrowLeft className="size-4" /> Çalışma Alanı
+          <ArrowLeft className="size-4" /> Arama Alanı
         </Link>
         <div className="flex items-center justify-between">
           <div>

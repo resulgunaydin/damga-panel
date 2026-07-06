@@ -30,6 +30,7 @@ export default async function SegmentPage({
         inWorkList: true,
         coarseScore: true,
         scoreBreakdown: true,
+        social: true,
       },
     }),
     getCaps(),
@@ -46,9 +47,10 @@ export default async function SegmentPage({
         keywords: search.keywords,
         queryCount: search.queryCount,
       }}
-      initialBusinesses={businesses.map((b) => ({
+      initialBusinesses={businesses.map(({ social, ...b }) => ({
         ...b,
         scoreBreakdown: b.scoreBreakdown as unknown as Breakdown,
+        mapsUri: (social as { googleMapsUri?: string } | null)?.googleMapsUri ?? null,
       }))}
       initialUsage={{
         caps,
