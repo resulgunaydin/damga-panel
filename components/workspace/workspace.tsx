@@ -12,6 +12,7 @@ import {
   MoreVertical,
   Pencil,
   Plus,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -278,6 +279,13 @@ export function Workspace({
               className="hover:bg-accent rounded-md p-2"
             >
               <Gauge className="size-4" />
+            </Link>
+            <Link
+              href="/ayarlar"
+              title="AI Sağlayıcı"
+              className="hover:bg-accent rounded-md p-2"
+            >
+              <Sparkles className="size-4" />
             </Link>
             <Button
               size="icon"
