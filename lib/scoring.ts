@@ -3,6 +3,7 @@
 // tespit edilemeyen sinyaller "detected: false" ile açıkça işaretlenir.
 
 import type { SiteCheck } from "@/lib/site-check";
+import { classifyWebsite } from "@/lib/website";
 
 export type Signal = {
   key: string;
@@ -35,9 +36,12 @@ export function computeScore(
   siteCheck: SiteCheck | null,
 ): ScoreResult {
   const signals: Signal[] = [];
-  const hasSite = !!b.website;
+  const kind = classifyWebsite(b.website);
+  const hasRealSite = kind === "gercek";
 
-  if (!hasSite) {
+  if (!hasRealSite) {
+    // Instagram/Facebook (sosyal) ya da rehber/tanıtım sayfası gerçek site sayılmaz
+    // → puanlamada "Site yok" gibi işlenir.
     signals.push({ key: "site-yok", label: "Site yok", points: 40, detected: true });
   } else if (siteCheck) {
     if (!siteCheck.reachable) {

@@ -18,7 +18,16 @@ export default async function CalismaListemPage() {
       website: true,
       googleRating: true,
       googleReviews: true,
-      search: { select: { city: true, district: true, sector: true } },
+      searchId: true,
+      manualAdded: true,
+      search: {
+        select: {
+          city: true,
+          district: true,
+          sector: true,
+          folder: { select: { name: true } },
+        },
+      },
     },
   });
 
@@ -38,6 +47,16 @@ export default async function CalismaListemPage() {
         context: b.search
           ? `${b.search.city}${b.search.district ? " · " + b.search.district : ""} · ${b.search.sector}`
           : null,
+        groupKey: b.searchId ?? (b.manualAdded ? "manual" : "diger"),
+        groupLabel: b.search
+          ? `${b.search.city}${b.search.district ? " · " + b.search.district : ""} · ${b.search.sector}`
+          : b.manualAdded
+            ? "Manuel eklenenler"
+            : "Diğer",
+        folder: b.search?.folder?.name ?? null,
+        city: b.search?.city ?? null,
+        district: b.search?.district ?? null,
+        sector: b.search?.sector ?? null,
       }))}
     />
   );

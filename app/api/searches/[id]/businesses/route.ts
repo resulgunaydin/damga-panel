@@ -9,7 +9,7 @@ export async function GET(_req: Request, { params }: Ctx) {
   const { id } = await params;
   const search = await prisma.search.findUnique({ where: { id } });
   if (!search) {
-    return NextResponse.json({ error: "Segment bulunamadı." }, { status: 404 });
+    return NextResponse.json({ error: "Arama bulunamadı." }, { status: 404 });
   }
 
   const [businesses, caps, placesToday, todayTotal] = await Promise.all([
@@ -28,12 +28,18 @@ export async function GET(_req: Request, { params }: Ctx) {
         inWorkList: true,
         coarseScore: true,
         scoreBreakdown: true,
+        social: true,
       },
     }),
     getCaps(),
     getDailyUsage("PLACES_SEARCH"),
     getTodayTotal(),
   ]);
+
+  const businessesOut = businesses.map(({ social, ...b }) => ({
+    ...b,
+    mapsUri: (social as { googleMapsUri?: string } | null)?.googleMapsUri ?? null,
+  }));
 
   return NextResponse.json({
     search: {
@@ -45,7 +51,7 @@ export async function GET(_req: Request, { params }: Ctx) {
       queryCount: search.queryCount,
       lastRunAt: search.lastRunAt,
     },
-    businesses,
+    businesses: businessesOut,
     usage: {
       caps,
       placesToday,

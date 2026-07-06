@@ -128,7 +128,7 @@ export function AnalizPanel({
             <p className="text-muted-foreground text-sm">
               {hasWebsite
                 ? "Gerçek tarayıcı + PageSpeed ile hız/SEO/mobil analizi için “Analiz yap”a bas."
-                : "Web sitesi yok — satış açısı zaten burada (site yok)."}
+                : "Gerçek web sitesi yok (sosyal medya / rehber sayfası olabilir) — website analizi yapılmaz. Satış açısı zaten hazır: site yok."}
             </p>
           )}
         </div>
@@ -220,7 +220,7 @@ export function AnalizPanel({
             <p className="text-muted-foreground text-sm">
               {hasSearch
                 ? "Aynı şehir+sektördeki en üst firmalarla kıyas + AI açıklaması."
-                : "Manuel firma — kıyaslanacak segment yok."}
+                : "Manuel firma — kıyaslanacak arama yok."}
             </p>
           )}
         </div>

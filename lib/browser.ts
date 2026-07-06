@@ -23,7 +23,7 @@ export async function renderPdf(html: string): Promise<Buffer> {
     return await page.pdf({
       format: "A4",
       printBackground: true,
-      margin: { top: "16mm", bottom: "16mm", left: "14mm", right: "14mm" },
+      margin: { top: "0", bottom: "0", left: "0", right: "0" },
     });
   } finally {
     await browser.close().catch(() => {});

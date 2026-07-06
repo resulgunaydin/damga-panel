@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { opportunitiesFromSignals } from "@/lib/opportunity";
+import { hasRealWebsite } from "@/lib/website";
 import type { Signal } from "@/lib/scoring";
 import { FirmaDetay } from "@/components/firma/firma-detay";
 
@@ -45,7 +46,7 @@ export default async function FirmaPage({
       opportunities={opportunities}
       hasPlaceId={!!business.placeId}
       hasSearch={!!business.searchId}
-      hasWebsite={!!business.website}
+      hasWebsite={hasRealWebsite(business.website)}
       analyses={Array.from(latestByKind.values()).map((a) => ({
         kind: a.kind,
         result: a.result,

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
+import { hasRealWebsite } from "@/lib/website";
 import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_SECTIONS,
   buildContext,
-  draftSection,
-  type SectionConfig,
+  draftAllSections,
 } from "@/lib/presentation";
 import { opportunitiesFromSignals } from "@/lib/opportunity";
 import { logActivity } from "@/lib/business";
@@ -42,7 +42,7 @@ export async function POST(_req: Request, { params }: Ctx) {
     name: business.name,
     sector: business.search?.sector ?? null,
     city: business.search?.city ?? null,
-    hasWebsite: !!business.website,
+    hasWebsite: hasRealWebsite(business.website),
     websiteSummary: website?.summary ?? null,
     gbpSummary: gbp?.summary ?? null,
     competitorText: comp?.explanation ?? null,
@@ -51,12 +51,8 @@ export async function POST(_req: Request, { params }: Ctx) {
 
   try {
     const sections = DEFAULT_SECTIONS;
-    const enabled = sections.filter((s) => s.enabled);
-    const drafts = await Promise.all(enabled.map((s) => draftSection(s.key, context)));
-    const content: Record<string, string> = {};
-    enabled.forEach((s, i) => {
-      content[s.key] = drafts[i];
-    });
+    // Tek AI çağrısı ile tüm bölümler (kota dostu).
+    const content = await draftAllSections(sections, context);
 
     const presentation = await prisma.presentation.create({
       data: {

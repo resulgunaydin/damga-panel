@@ -66,3 +66,9 @@ dump.rdb
 
 # Prisma üretilen client (schema.prisma commit'lenir, üretilen kod hariç)
 /lib/generated
+
+# Geçici ekran görüntüleri / Playwright MCP çıktıları
+.playwright-mcp/
+/landing.png
+/pano.png
+/calisma-alani.png

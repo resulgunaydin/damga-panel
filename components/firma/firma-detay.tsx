@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { classifyWebsite } from "@/lib/website";
 import { IsTakibi, type Job } from "@/components/firma/is-takibi";
 import { AnalizPanel, type AnalysisRecord } from "@/components/firma/analiz-panel";
 
@@ -223,7 +224,7 @@ export function FirmaDetay({
           href="/calisma-listem"
           className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1 text-sm"
         >
-          <ArrowLeft className="size-4" /> Çalışma Panom
+          <ArrowLeft className="size-4" /> Çalışma Listem
         </Link>
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -237,18 +238,33 @@ export function FirmaDetay({
                   <Phone className="size-3.5" /> {business.phone}
                 </span>
               )}
-              {business.website ? (
-                <a
-                  href={business.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-blue-600 hover:underline"
-                >
-                  <Globe className="size-3.5" /> web sitesi
-                </a>
-              ) : (
-                <span className="font-medium text-orange-600">site yok</span>
-              )}
+              {(() => {
+                const kind = classifyWebsite(business.website);
+                if (kind === "gercek")
+                  return (
+                    <a
+                      href={business.website!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                    >
+                      <Globe className="size-3.5" /> web sitesi
+                    </a>
+                  );
+                if (kind === "sosyal")
+                  return (
+                    <a
+                      href={business.website!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-fuchsia-600 hover:underline dark:text-fuchsia-400"
+                      title="Sadece sosyal medya — gerçek sitesi yok"
+                    >
+                      sosyal medya
+                    </a>
+                  );
+                return <span className="font-medium text-orange-600">site yok</span>;
+              })()}
               {business.googleRating != null && (
                 <span className="inline-flex items-center gap-1">
                   <Star className="size-3.5 fill-current text-amber-500" />

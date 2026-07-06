@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasRealWebsite } from "@/lib/website";
 import { prisma } from "@/lib/prisma";
 import { generateText } from "@/lib/ai";
 import { getCachedOrCompute } from "@/lib/cache";
@@ -72,7 +73,7 @@ export async function POST(req: Request, { params }: Ctx) {
             name: business.name,
             sector: business.search?.sector ?? null,
             city: business.search?.city ?? null,
-            hasWebsite: !!business.website,
+            hasWebsite: hasRealWebsite(business.website),
           }),
           tier: "simple",
           maxTokens: 300,

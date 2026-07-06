@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -8,12 +8,16 @@ import {
   ExternalLink,
   Filter,
   Globe,
+  MapPin,
   Phone,
   Plus,
   Radar,
+  Search,
   Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { classifyWebsite } from "@/lib/website";
 
 type Signal = { key: string; label: string; points: number; detected: boolean };
 export type Breakdown = {
@@ -33,6 +37,7 @@ type Business = {
   inWorkList: boolean;
   coarseScore: number;
   scoreBreakdown: Breakdown;
+  mapsUri: string | null;
 };
 type Usage = {
   caps: { dailyCap: number; perScanCap: number };
@@ -59,7 +64,7 @@ type ScoreSummary = {
 
 const REASON: Record<string, string> = {
   "gunluk-tavan": "Günlük sorgu tavanına ulaşıldı — durdum.",
-  "tarama-tavani": "Bu segment için sorgu tavanına ulaşıldı — durdum.",
+  "tarama-tavani": "Bu arama için sorgu tavanına ulaşıldı — durdum.",
   "alan-bulunamadi": "Bu il/ilçe için alan sınırı bulunamadı.",
 };
 
@@ -110,8 +115,38 @@ export function SegmentDetail({
   const [msg, setMsg] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
+  // Filtreler
+  const [q, setQ] = useState("");
+  const [siteFilter, setSiteFilter] = useState<"hepsi" | "var" | "sosyal" | "yok">("hepsi");
+  const [sort, setSort] = useState<"skor" | "isim" | "yorum" | "puan">("skor");
+
   const neverRun = usage.scanQueries === 0;
-  const unscored = businesses.filter((b) => !b.scoreBreakdown);
+  const unscoredAll = businesses.filter((b) => !b.scoreBreakdown);
+  const allScored = businesses.length > 0 && unscoredAll.length === 0;
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLocaleLowerCase("tr");
+    const list = businesses.filter((b) => {
+      const kind = classifyWebsite(b.website);
+      if (siteFilter === "var" && kind !== "gercek") return false;
+      if (siteFilter === "sosyal" && kind !== "sosyal") return false;
+      if (siteFilter === "yok" && (kind === "gercek" || kind === "sosyal")) return false;
+      if (needle) {
+        const hay = `${b.name} ${b.address ?? ""}`.toLocaleLowerCase("tr");
+        if (!hay.includes(needle)) return false;
+      }
+      return true;
+    });
+    const cmp: Record<typeof sort, (a: Business, b: Business) => number> = {
+      skor: (a, b) => b.coarseScore - a.coarseScore,
+      isim: (a, b) => a.name.localeCompare(b.name, "tr"),
+      yorum: (a, b) => (b.googleReviews ?? 0) - (a.googleReviews ?? 0),
+      puan: (a, b) => (b.googleRating ?? 0) - (a.googleRating ?? 0),
+    };
+    return [...list].sort(cmp[sort]);
+  }, [businesses, q, siteFilter, sort]);
+
+  const unscored = filtered.filter((b) => !b.scoreBreakdown);
 
   async function refresh() {
     const res = await fetch(`/api/searches/${search.id}/businesses`);
@@ -191,7 +226,7 @@ export function SegmentDetail({
           href="/calisma-alani"
           className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1 text-sm"
         >
-          <ArrowLeft className="size-4" /> Çalışma Alanı
+          <ArrowLeft className="size-4" /> Arama Alanı
         </Link>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -216,12 +251,12 @@ export function SegmentDetail({
           <div className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => score(false)}
+              onClick={() => score(allScored)}
               disabled={scoring || businesses.length === 0}
               title="Site sağlığı + Google verisiyle fırsat skoru (ücretsiz)"
             >
               <Filter className={`size-4 ${scoring ? "animate-pulse" : ""}`} />
-              {scoring ? "Eleniyor…" : "Kaba Ele"}
+              {scoring ? "Puanlanıyor…" : allScored ? "Yeniden puanla" : "Puanla"}
             </Button>
             <Button onClick={scan} disabled={scanning || done}>
               <Radar className={`size-4 ${scanning ? "animate-pulse" : ""}`} />
@@ -240,7 +275,7 @@ export function SegmentDetail({
       {/* Kullanım / bütçe göstergesi (Bölüm 4.12) */}
       <div className="text-muted-foreground flex flex-wrap gap-x-6 gap-y-1 rounded-lg border px-4 py-3 text-sm">
         <span>
-          Bu segment sorgusu:{" "}
+          Bu arama sorgusu:{" "}
           <b className="text-foreground">{usage.scanQueries}</b> / {usage.caps.perScanCap}
         </span>
         <span>
@@ -265,15 +300,68 @@ export function SegmentDetail({
           <p className="text-xs">“Taramayı başlat” ile Google Places’ten firmaları çek.</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-6">
-          {unscored.length > 0 && (
-            <p className="text-muted-foreground text-sm">
-              {unscored.length} firma henüz skorlanmadı — <b>Kaba Ele</b>’ye basın.
-            </p>
+        <div className="flex flex-col gap-4">
+          {/* Filtre & arama çubuğu */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-52 flex-1">
+              <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+              <Input
+                placeholder="Firma / adres ara…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              {(
+                [
+                  ["hepsi", "Hepsi"],
+                  ["yok", "Site yok"],
+                  ["sosyal", "Sosyal"],
+                  ["var", "Site var"],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => setSiteFilter(k)}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                    siteFilter === k ? "border-primary/40 bg-primary/10 text-primary" : "hover:bg-accent"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as typeof sort)}
+              className="bg-background h-8 rounded-lg border px-2 text-sm"
+            >
+              <option value="skor">Skora göre</option>
+              <option value="yorum">Yoruma göre</option>
+              <option value="puan">Puana göre</option>
+              <option value="isim">İsme göre</option>
+            </select>
+          </div>
+
+          <p className="text-muted-foreground text-sm">
+            {filtered.length} firma gösteriliyor
+            {unscoredAll.length > 0 && (
+              <>
+                {" · "}
+                {unscoredAll.length} henüz puanlanmadı — <b>Puanla</b>’ya basın
+              </>
+            )}
+          </p>
+
+          {filtered.length === 0 && (
+            <div className="text-muted-foreground rounded-lg border border-dashed py-10 text-center text-sm">
+              Bu süzgeçle firma yok.
+            </div>
           )}
 
           {BUCKETS.map((bucket) => {
-            const items = businesses.filter(
+            const items = filtered.filter(
               (b) => b.scoreBreakdown?.bucket === bucket.key,
             );
             if (items.length === 0) return null;
@@ -337,25 +425,52 @@ function FirmRow({
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-          <span className="font-medium">{b.name}</span>
+          <a
+            href={
+              b.mapsUri ??
+              `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${b.name} ${b.address ?? ""}`)}`
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-primary inline-flex items-center gap-1 font-medium hover:underline"
+            title="Google Haritalar'da aç"
+          >
+            {b.name}
+            <MapPin className="size-3 opacity-50" />
+          </a>
           {b.googleRating != null && (
             <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
               <Star className="size-3 fill-current text-amber-500" />
               {b.googleRating.toFixed(1)} ({b.googleReviews ?? 0})
             </span>
           )}
-          {b.website ? (
-            <a
-              href={b.website}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
-            >
-              <Globe className="size-3" /> site <ExternalLink className="size-3" />
-            </a>
-          ) : (
-            <span className="text-xs font-medium text-orange-600">site yok</span>
-          )}
+          {(() => {
+            const kind = classifyWebsite(b.website);
+            if (kind === "gercek")
+              return (
+                <a
+                  href={b.website!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                >
+                  <Globe className="size-3" /> site <ExternalLink className="size-3" />
+                </a>
+              );
+            if (kind === "sosyal")
+              return (
+                <a
+                  href={b.website!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-fuchsia-600 hover:underline dark:text-fuchsia-400"
+                  title="Sadece sosyal medya — gerçek sitesi yok"
+                >
+                  sosyal medya <ExternalLink className="size-3" />
+                </a>
+              );
+            return <span className="text-xs font-medium text-orange-600">site yok</span>;
+          })()}
           {b.phone && (
             <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
               <Phone className="size-3" /> {b.phone}

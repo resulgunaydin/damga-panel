@@ -7,12 +7,16 @@ import {
 
 // Aktif sağlayıcı + hangi sağlayıcıların anahtarı hazır.
 export async function GET() {
-  const provider = await getAiProvider();
+  const [provider, anthropic, gemini] = await Promise.all([
+    getAiProvider(),
+    providerConfigured("anthropic"),
+    providerConfigured("gemini"),
+  ]);
   return NextResponse.json({
     provider,
     providers: {
-      anthropic: { configured: providerConfigured("anthropic") },
-      gemini: { configured: providerConfigured("gemini") },
+      anthropic: { configured: anthropic },
+      gemini: { configured: gemini },
     },
     models: AI_MODELS,
   });
