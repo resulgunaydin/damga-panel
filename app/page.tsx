@@ -1,4 +1,5 @@
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
 
 const asamalar = [
   {
@@ -52,9 +53,11 @@ export default function Home() {
       </ol>
 
       <div className="flex items-center gap-3">
-        <Button disabled>Panel yakında</Button>
+        <Link href="/calisma-alani" className={buttonVariants()}>
+          Çalışma Alanı’na git
+        </Link>
         <span className="text-muted-foreground text-sm">
-          Kurulum tamam — modüller GitHub Issues üzerinden geliştiriliyor.
+          Klasörler + arama segmentleri hazır.
         </span>
       </div>
     </main>
