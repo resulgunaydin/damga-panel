@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import {
   ChevronRight,
   FolderPlus,
+  Gauge,
   Inbox,
   Layers,
   MoreVertical,
@@ -262,16 +263,25 @@ export function Workspace({
           <span className="flex items-center gap-2 font-semibold">
             <Layers className="size-4" /> Çalışma Alanı
           </span>
-          <Button
-            size="icon"
-            variant="ghost"
-            title="Yeni klasör"
-            onClick={() =>
-              setFolderDialog({ open: true, parentId: null, editId: null, value: "" })
-            }
-          >
-            <FolderPlus className="size-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Link
+              href="/kullanim"
+              title="Kullanım & Bütçe"
+              className="hover:bg-accent rounded-md p-2"
+            >
+              <Gauge className="size-4" />
+            </Link>
+            <Button
+              size="icon"
+              variant="ghost"
+              title="Yeni klasör"
+              onClick={() =>
+                setFolderDialog({ open: true, parentId: null, editId: null, value: "" })
+              }
+            >
+              <FolderPlus className="size-4" />
+            </Button>
+          </div>
         </div>
 
         <nav className="flex-1 overflow-y-auto p-2 text-sm">

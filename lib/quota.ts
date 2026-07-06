@@ -50,3 +50,40 @@ export async function incrementUsage(kind: ApiUsageKind, by = 1): Promise<void> 
     update: { count: { increment: by } },
   });
 }
+
+export type UsageSummary = {
+  caps: Caps;
+  todayTotal: number;
+  monthTotal: number;
+  byKind: Record<string, number>; // bu ay tür bazında
+  monthLabel: string; // YYYY-MM
+};
+
+// Kullanım göstergesi özeti (Bölüm 4.12): bugün + bu ay + tür kırılımı.
+export async function getUsageSummary(): Promise<UsageSummary> {
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const [caps, monthRows, todayRows] = await Promise.all([
+    getCaps(),
+    prisma.apiUsage.findMany({ where: { day: { gte: monthStart } } }),
+    prisma.apiUsage.findMany({ where: { day: today() } }),
+  ]);
+  const byKind: Record<string, number> = {};
+  let monthTotal = 0;
+  for (const r of monthRows) {
+    byKind[r.kind] = (byKind[r.kind] ?? 0) + r.count;
+    monthTotal += r.count;
+  }
+  const todayTotal = todayRows.reduce((s, r) => s + r.count, 0);
+  const monthLabel = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  return { caps, todayTotal, monthTotal, byKind, monthLabel };
+}
+
+// Tavanları güncelle (AppSetting quota.caps).
+export async function setCaps(caps: Caps): Promise<void> {
+  await prisma.appSetting.upsert({
+    where: { key: "quota.caps" },
+    create: { key: "quota.caps", value: caps },
+    update: { value: caps },
+  });
+}
