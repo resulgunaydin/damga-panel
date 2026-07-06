@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { placeDetails } from "@/lib/places";
-import { computeGbpAnalysis } from "@/lib/analysis";
+import { runPageSpeed } from "@/lib/pagespeed";
+import { observeSite } from "@/lib/browser";
+import { computeGbpAnalysis, computeWebsiteAnalysis } from "@/lib/analysis";
 import { generateText } from "@/lib/ai";
 import { logActivity } from "@/lib/business";
 import { getCaps, getDailyUsage, incrementUsage } from "@/lib/quota";
@@ -78,6 +80,48 @@ export async function POST(req: Request, { params }: Ctx) {
     } catch (err) {
       return NextResponse.json(
         { error: err instanceof Error ? err.message : "Analiz başarısız." },
+        { status: 500 },
+      );
+    }
+  }
+
+  if (kind === "WEBSITE") {
+    if (!business.website) {
+      return NextResponse.json(
+        { error: "Bu firmanın web sitesi yok — website analizi yapılamaz." },
+        { status: 400 },
+      );
+    }
+    const [caps, daily] = await Promise.all([getCaps(), getDailyUsage("PAGESPEED")]);
+    if (daily >= caps.dailyCap) {
+      return NextResponse.json(
+        { error: "Günlük sorgu tavanına ulaşıldı — durdum." },
+        { status: 429 },
+      );
+    }
+    try {
+      // Gerçek tarayıcı gözlemi + PageSpeed paralel.
+      const [obs, ps] = await Promise.all([
+        observeSite(business.website),
+        runPageSpeed(business.website).catch(() => ({
+          performance: null,
+          seo: null,
+          accessibility: null,
+          bestPractices: null,
+          lcp: null,
+        })),
+      ]);
+      await incrementUsage("PAGESPEED");
+      await incrementUsage("WEBSITE_ANALYSIS");
+      const result = computeWebsiteAnalysis(ps, obs);
+      const analysis = await prisma.analysis.create({
+        data: { businessId: id, kind, result: result as object },
+      });
+      await logActivity(id, "Website analizi yapıldı.");
+      return NextResponse.json({ analysis, cached: false });
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Website analizi başarısız." },
         { status: 500 },
       );
     }

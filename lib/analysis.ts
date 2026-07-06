@@ -2,6 +2,8 @@
 // Dürüstlük kuralı: her sinyal kesin / tahmini / tespit-edilemedi olarak işaretlenir.
 
 import type { PlaceDetails } from "@/lib/places";
+import type { PageSpeedResult } from "@/lib/pagespeed";
+import type { BrowserObs } from "@/lib/browser";
 
 export type SignalLevel = "kesin" | "tahmini" | "tespit-edilemedi";
 export type Metric = { label: string; value: string; level: SignalLevel };
@@ -77,6 +79,72 @@ export function computeGbpAnalysis(d: PlaceDetails): AnalysisResult {
     acik.length > 0
       ? `Google Business açıkları: ${acik.join(", ")}. Yorum/itibar çalışması satılabilir.`
       : "Google Business profili iyi durumda; belirgin açık yok.";
+
+  return { metrics, summary };
+}
+
+// Website analizi (Bölüm 4.5) — PageSpeed + gerçek tarayıcı gözlemi.
+export function computeWebsiteAnalysis(
+  ps: PageSpeedResult,
+  obs: BrowserObs,
+): AnalysisResult {
+  const metrics: Metric[] = [];
+
+  metrics.push({
+    label: "Site açılıyor mu",
+    value: obs.reachable ? "evet" : "hayır",
+    level: "kesin",
+  });
+  metrics.push({
+    label: "Yüklenme süresi",
+    value: obs.loadMs != null ? `${(obs.loadMs / 1000).toFixed(1)} sn` : "—",
+    level: obs.loadMs != null ? "kesin" : "tespit-edilemedi",
+  });
+  metrics.push({
+    label: "Mobil uyumlu (viewport)",
+    value: obs.hasViewport ? "evet" : "hayır",
+    level: "kesin",
+  });
+
+  const scoreMetric = (label: string, v: number | null): Metric => ({
+    label,
+    value: v != null ? `${v}/100` : "—",
+    level: v != null ? "kesin" : "tespit-edilemedi",
+  });
+  metrics.push(scoreMetric("Performans (PageSpeed)", ps.performance));
+  metrics.push(scoreMetric("SEO", ps.seo));
+  metrics.push(scoreMetric("Erişilebilirlik", ps.accessibility));
+  metrics.push(scoreMetric("En iyi uygulamalar", ps.bestPractices));
+  metrics.push({
+    label: "LCP (en büyük içerik)",
+    value: ps.lcp ?? "—",
+    level: ps.lcp ? "kesin" : "tespit-edilemedi",
+  });
+
+  // Kalite puanı = mevcut PageSpeed skorlarının ortalaması (0-100)
+  const scores = [ps.performance, ps.seo, ps.accessibility, ps.bestPractices].filter(
+    (x): x is number => x != null,
+  );
+  const quality = scores.length
+    ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+    : null;
+  metrics.push({
+    label: "Website kalite puanı",
+    value: quality != null ? `${quality}/100` : "—",
+    level: quality != null ? "tahmini" : "tespit-edilemedi",
+  });
+
+  const acik: string[] = [];
+  if (!obs.reachable) acik.push("site açılmıyor");
+  if (!obs.hasViewport) acik.push("mobil uyumsuz");
+  if (obs.loadMs != null && obs.loadMs > 4000) acik.push("yavaş yükleniyor");
+  if (ps.performance != null && ps.performance < 50) acik.push("performans düşük");
+  if (ps.seo != null && ps.seo < 70) acik.push("SEO zayıf");
+
+  const summary =
+    acik.length > 0
+      ? `Website açıkları: ${acik.join(", ")}. Yenileme/optimizasyon satılabilir.`
+      : "Website teknik olarak iyi durumda; belirgin açık az.";
 
   return { metrics, summary };
 }
