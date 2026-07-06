@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { placeDetails } from "@/lib/places";
 import { computeGbpAnalysis } from "@/lib/analysis";
+import { generateText } from "@/lib/ai";
 import { logActivity } from "@/lib/business";
 import { getCaps, getDailyUsage, incrementUsage } from "@/lib/quota";
 import type { AnalysisKind } from "@/lib/generated/prisma/enums";
@@ -19,7 +20,16 @@ export async function POST(req: Request, { params }: Ctx) {
 
   const business = await prisma.business.findUnique({
     where: { id },
-    select: { id: true, placeId: true },
+    select: {
+      id: true,
+      placeId: true,
+      searchId: true,
+      name: true,
+      website: true,
+      googleRating: true,
+      googleReviews: true,
+      coarseScore: true,
+    },
   });
   if (!business) {
     return NextResponse.json({ error: "Firma bulunamadı." }, { status: 404 });
@@ -71,6 +81,84 @@ export async function POST(req: Request, { params }: Ctx) {
         { status: 500 },
       );
     }
+  }
+
+  if (kind === "COMPETITOR") {
+    if (!business.searchId) {
+      return NextResponse.json(
+        { error: "Rakip analizi için firma bir aramaya (şehir+sektör) bağlı olmalı." },
+        { status: 400 },
+      );
+    }
+    // Aynı arama (şehir+sektör) içindeki en üst rakipler — kendi keşif verimiz.
+    const rivals = await prisma.business.findMany({
+      where: { searchId: business.searchId, blacklisted: false, id: { not: id } },
+      orderBy: [{ googleReviews: "desc" }, { googleRating: "desc" }],
+      take: 3,
+      select: {
+        name: true,
+        googleRating: true,
+        googleReviews: true,
+        website: true,
+        coarseScore: true,
+      },
+    });
+    if (rivals.length === 0) {
+      return NextResponse.json(
+        { error: "Aynı segmentte kıyaslanacak rakip firma bulunamadı." },
+        { status: 400 },
+      );
+    }
+
+    const rows = [
+      {
+        name: business.name,
+        rating: business.googleRating,
+        reviews: business.googleReviews,
+        hasWebsite: !!business.website,
+        score: business.coarseScore,
+        self: true,
+      },
+      ...rivals.map((r) => ({
+        name: r.name,
+        rating: r.googleRating,
+        reviews: r.googleReviews,
+        hasWebsite: !!r.website,
+        score: r.coarseScore,
+        self: false,
+      })),
+    ];
+
+    // AI açıklaması — sadece verilen verilere dayan, uydurma yok (dürüstlük).
+    let explanation = "";
+    try {
+      const table = rows
+        .map(
+          (r) =>
+            `${r.self ? "» " : "  "}${r.name} — puan ${r.rating ?? "?"}, yorum ${r.reviews ?? "?"}, site ${r.hasWebsite ? "var" : "yok"}`,
+        )
+        .join("\n");
+      const out = await generateText({
+        system:
+          "Bir dijital ajansın satış analisti gibisin. SADECE verilen tabloya dayan, veri dışında hiçbir şey uydurma (rakibin reklam kullanıp kullanmadığı gibi bilinmeyenleri söyleme). 2-4 cümle, Türkçe. Hedef firmanın (») rakiplerine göre nerede geride olduğunu ve hangi hizmetin satılabileceğini açıkla.",
+        prompt: `Hedef firma » ile işaretli.\n${table}\n\nHedef firma neden geride, ne satılabilir?`,
+        tier: "simple",
+        maxTokens: 400,
+      });
+      explanation = out.text;
+      await incrementUsage("AI_ANALYSIS");
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "AI açıklaması üretilemedi." },
+        { status: 500 },
+      );
+    }
+
+    const analysis = await prisma.analysis.create({
+      data: { businessId: id, kind, result: { rows, explanation } as object },
+    });
+    await logActivity(id, "Rakip analizi yapıldı.");
+    return NextResponse.json({ analysis, cached: false });
   }
 
   return NextResponse.json(
