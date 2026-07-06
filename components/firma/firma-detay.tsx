@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IsTakibi, type Job } from "@/components/firma/is-takibi";
+import { AnalizPanel, type AnalysisRecord } from "@/components/firma/analiz-panel";
 
 const STATUS_LABEL: Record<string, string> = {
   YENI: "Yeni",
@@ -66,6 +67,8 @@ export function FirmaDetay({
   activities: initialActivities,
   isCustomer,
   jobs,
+  hasPlaceId,
+  analyses,
 }: {
   business: Business;
   opportunities: Opportunity[];
@@ -73,6 +76,8 @@ export function FirmaDetay({
   activities: Activity[];
   isCustomer: boolean;
   jobs: Job[];
+  hasPlaceId: boolean;
+  analyses: AnalysisRecord[];
 }) {
   const [status, setStatus] = useState(business.status);
   const [message, setMessage] = useState<string | null>(initialMessage);
@@ -278,6 +283,9 @@ export function FirmaDetay({
 
       {/* Gerçek Müşteri iş takibi (Bölüm 4.11) */}
       {isCustomer && <IsTakibi businessId={business.id} initialJobs={jobs} />}
+
+      {/* Derin Analiz (Bölüm 4.5) — elle tetiklenir */}
+      <AnalizPanel businessId={business.id} hasPlaceId={hasPlaceId} initial={analyses} />
 
       {/* Satış fırsatları (Bölüm 4.6) — fiyatsız */}
       {opportunities.length > 0 && (
