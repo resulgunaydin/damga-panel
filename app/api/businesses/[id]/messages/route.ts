@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateText } from "@/lib/ai";
+import { getCachedOrCompute } from "@/lib/cache";
 import { logActivity } from "@/lib/business";
 import type { MessageKind } from "@/lib/generated/prisma/enums";
 
@@ -55,38 +56,40 @@ export async function POST(req: Request, { params }: Ctx) {
     return NextResponse.json({ error: "Firma bulunamadı." }, { status: 404 });
   }
 
-  // Cache (Bölüm 5): aynı türde mesaj varsa yeniden üretme.
-  if (!regenerate) {
-    const existing = await prisma.message.findFirst({
-      where: { businessId: id, kind },
-      orderBy: { createdAt: "desc" },
-    });
-    if (existing) return NextResponse.json({ message: existing, cached: true });
-  }
-
+  // Cache (Bölüm 5): aynı türde mesaj varsa yeniden üretme; regenerate ile tazele.
   try {
-    const result = await generateText({
-      system: ON_MESAJ_SYSTEM,
-      prompt: buildPrompt({
-        name: business.name,
-        sector: business.search?.sector ?? null,
-        city: business.search?.city ?? null,
-        hasWebsite: !!business.website,
-      }),
-      tier: "simple",
-      maxTokens: 300,
-    });
-
-    const message = await prisma.message.create({
-      data: {
-        businessId: id,
-        kind,
-        content: result.text,
-        model: `${result.provider}:${result.model}`,
+    const { data: message, cached } = await getCachedOrCompute({
+      force: regenerate,
+      find: () =>
+        prisma.message.findFirst({
+          where: { businessId: id, kind },
+          orderBy: { createdAt: "desc" },
+        }),
+      compute: async () => {
+        const result = await generateText({
+          system: ON_MESAJ_SYSTEM,
+          prompt: buildPrompt({
+            name: business.name,
+            sector: business.search?.sector ?? null,
+            city: business.search?.city ?? null,
+            hasWebsite: !!business.website,
+          }),
+          tier: "simple",
+          maxTokens: 300,
+        });
+        const msg = await prisma.message.create({
+          data: {
+            businessId: id,
+            kind,
+            content: result.text,
+            model: `${result.provider}:${result.model}`,
+          },
+        });
+        await logActivity(id, `Ön mesaj üretildi (${result.provider}).`);
+        return msg;
       },
     });
-    await logActivity(id, `Ön mesaj üretildi (${result.provider}).`);
-    return NextResponse.json({ message, cached: false });
+    return NextResponse.json({ message, cached });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Üretim başarısız." },

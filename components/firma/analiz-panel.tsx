@@ -69,6 +69,14 @@ export function AnalizPanel({
   const gbp = analyses["GOOGLE_BUSINESS"]?.result as GbpResult | undefined;
   const comp = analyses["COMPETITOR"]?.result as CompResult | undefined;
 
+  // Veri tazeliği (Bölüm 5 — cache şeffaflığı)
+  const fresh = (kind: string) =>
+    analyses[kind] ? new Date(analyses[kind].generatedAt).toLocaleDateString("tr-TR") : null;
+  const Fresh = ({ kind }: { kind: string }) =>
+    fresh(kind) ? (
+      <span className="text-muted-foreground ml-2 text-xs font-normal">· güncel {fresh(kind)}</span>
+    ) : null;
+
   const MetricList = ({ data }: { data: GbpResult }) => (
     <div className="space-y-2">
       <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
@@ -103,7 +111,7 @@ export function AnalizPanel({
         {/* Website */}
         <div className="rounded-md border p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="font-medium">Website</span>
+            <span className="font-medium">Website<Fresh kind="WEBSITE" /></span>
             {website ? (
               <Button variant="ghost" size="sm" onClick={() => run("WEBSITE", true)} disabled={busy === "WEBSITE"}>
                 <RefreshCw className={`size-3.5 ${busy === "WEBSITE" ? "animate-spin" : ""}`} /> Tazele
@@ -128,7 +136,7 @@ export function AnalizPanel({
         {/* Google Business */}
         <div className="rounded-md border p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="font-medium">Google Business</span>
+            <span className="font-medium">Google Business<Fresh kind="GOOGLE_BUSINESS" /></span>
             {gbp ? (
               <Button variant="ghost" size="sm" onClick={() => run("GOOGLE_BUSINESS", true)} disabled={busy === "GOOGLE_BUSINESS"}>
                 <RefreshCw className={`size-3.5 ${busy === "GOOGLE_BUSINESS" ? "animate-spin" : ""}`} /> Tazele
@@ -168,7 +176,7 @@ export function AnalizPanel({
         {/* Rakip analizi */}
         <div className="rounded-md border p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="font-medium">Rakip kıyası</span>
+            <span className="font-medium">Rakip kıyası<Fresh kind="COMPETITOR" /></span>
             {comp ? (
               <Button variant="ghost" size="sm" onClick={() => run("COMPETITOR", true)} disabled={busy === "COMPETITOR"}>
                 <RefreshCw className={`size-3.5 ${busy === "COMPETITOR" ? "animate-spin" : ""}`} /> Tazele
