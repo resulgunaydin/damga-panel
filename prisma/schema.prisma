@@ -1,0 +1,12 @@
+// DamgaPanel — Prisma şeması
+// Modeller #2 "Veritabanı şeması" issue'sunda eklenecek.
+// Bağlantı URL'i prisma.config.ts üzerinden (DATABASE_URL) sağlanır.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
