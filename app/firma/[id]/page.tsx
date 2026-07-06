@@ -18,6 +18,7 @@ export default async function FirmaPage({
       search: { select: { city: true, district: true, sector: true } },
       messages: { where: { kind: "ON_MESAJ" }, orderBy: { createdAt: "desc" }, take: 1 },
       activities: { orderBy: { createdAt: "desc" }, take: 30 },
+      analyses: { orderBy: { generatedAt: "desc" } },
       customer: {
         include: {
           jobs: {
@@ -33,9 +34,21 @@ export default async function FirmaPage({
   const breakdown = business.scoreBreakdown as { signals?: Signal[] } | null;
   const opportunities = opportunitiesFromSignals(breakdown?.signals);
 
+  // Tür başına en güncel analiz
+  const latestByKind = new Map<string, (typeof business.analyses)[number]>();
+  for (const a of business.analyses) {
+    if (!latestByKind.has(a.kind)) latestByKind.set(a.kind, a);
+  }
+
   return (
     <FirmaDetay
       opportunities={opportunities}
+      hasPlaceId={!!business.placeId}
+      analyses={Array.from(latestByKind.values()).map((a) => ({
+        kind: a.kind,
+        result: a.result as { metrics: { label: string; value: string; level: "kesin" | "tahmini" | "tespit-edilemedi" }[]; summary: string },
+        generatedAt: a.generatedAt.toISOString(),
+      }))}
       business={{
         id: business.id,
         name: business.name,

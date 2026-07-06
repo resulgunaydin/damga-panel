@@ -163,3 +163,59 @@ export function splitRect(r: Rect): Rect[] {
 export function rectSpan(r: Rect): number {
   return Math.min(r.high.lat - r.low.lat, r.high.lng - r.low.lng);
 }
+
+export type PlaceReview = {
+  rating: number | null;
+  text: string | null;
+  publishTime: string | null;
+};
+export type PlaceDetails = {
+  rating: number | null;
+  reviewCount: number | null;
+  reviews: PlaceReview[];
+  photoCount: number | null; // Places en fazla ~10 foto referansı döner
+  googleMapsUri: string | null;
+};
+
+const DETAILS_FIELD_MASK = [
+  "id",
+  "rating",
+  "userRatingCount",
+  "reviews",
+  "photos",
+  "googleMapsUri",
+].join(",");
+
+// Bir firmanın Google Business detayını çeker (Bölüm 4.5 GBP motoru).
+export async function placeDetails(placeId: string): Promise<PlaceDetails> {
+  const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
+    method: "GET",
+    headers: {
+      "X-Goog-Api-Key": apiKey(),
+      "X-Goog-FieldMask": DETAILS_FIELD_MASK,
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.error?.message ?? `Places detay hatası (${res.status})`);
+  }
+  const reviews: PlaceReview[] = (data.reviews ?? []).map(
+    (r: {
+      rating?: number;
+      text?: { text?: string };
+      originalText?: { text?: string };
+      publishTime?: string;
+    }) => ({
+      rating: typeof r.rating === "number" ? r.rating : null,
+      text: r.text?.text ?? r.originalText?.text ?? null,
+      publishTime: r.publishTime ?? null,
+    }),
+  );
+  return {
+    rating: typeof data.rating === "number" ? data.rating : null,
+    reviewCount: typeof data.userRatingCount === "number" ? data.userRatingCount : null,
+    reviews,
+    photoCount: Array.isArray(data.photos) ? data.photos.length : null,
+    googleMapsUri: data.googleMapsUri ?? null,
+  };
+}
