@@ -18,6 +18,14 @@ export default async function FirmaPage({
       search: { select: { city: true, district: true, sector: true } },
       messages: { where: { kind: "ON_MESAJ" }, orderBy: { createdAt: "desc" }, take: 1 },
       activities: { orderBy: { createdAt: "desc" }, take: 30 },
+      customer: {
+        include: {
+          jobs: {
+            orderBy: { createdAt: "desc" },
+            include: { payments: { orderBy: { paidAt: "asc" } } },
+          },
+        },
+      },
     },
   });
   if (!business) notFound();
@@ -49,6 +57,21 @@ export default async function FirmaPage({
         kind: a.kind,
         message: a.message,
         createdAt: a.createdAt.toISOString(),
+      }))}
+      isCustomer={business.stage === "MUSTERI" || !!business.customer}
+      jobs={(business.customer?.jobs ?? []).map((j) => ({
+        id: j.id,
+        title: j.title,
+        status: j.status,
+        deadline: j.deadline ? j.deadline.toISOString() : null,
+        note: j.note,
+        agreedAmount: j.agreedAmount != null ? Number(j.agreedAmount) : null,
+        payments: j.payments.map((p) => ({
+          id: p.id,
+          amount: Number(p.amount),
+          note: p.note,
+          paidAt: p.paidAt.toISOString(),
+        })),
       }))}
     />
   );
