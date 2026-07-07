@@ -185,7 +185,11 @@ export function BrandingSettings({ initial, themes }: { initial: Branding; theme
           {themes.map((t) => {
             const selected = b.defaultThemeId === t.id;
             return (
-              <button key={t.id} onClick={() => set("defaultThemeId", t.id)} className="group text-left">
+              <button
+                key={t.id}
+                onClick={() => set("defaultThemeId", t.id)}
+                className="group min-w-0 overflow-hidden text-left"
+              >
                 <div
                   className="relative overflow-hidden rounded-xl border-2 transition"
                   style={{ borderColor: selected ? accent : "transparent" }}
