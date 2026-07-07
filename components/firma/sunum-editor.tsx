@@ -23,6 +23,7 @@ type Presentation = {
   content: Record<string, string>;
   format: string;
   openedAt: string | null;
+  themeId: string | null;
 };
 
 export function SunumEditor({
@@ -30,11 +31,15 @@ export function SunumEditor({
   businessName,
   initial,
   defaultSections,
+  themes,
+  globalThemeId,
 }: {
   businessId: string;
   businessName: string;
   initial: Presentation | null;
   defaultSections: Section[];
+  themes: { id: string; name: string }[];
+  globalThemeId: string;
 }) {
   const [pres, setPres] = useState<Presentation | null>(initial);
   const [busy, setBusy] = useState<string | null>(null);
@@ -57,6 +62,7 @@ export function SunumEditor({
         content: p.content,
         format: p.format,
         openedAt: p.openedAt,
+        themeId: p.themeId ?? null,
       });
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Hata");
@@ -180,12 +186,36 @@ export function SunumEditor({
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={pres.themeId ?? globalThemeId}
+              onChange={async (e) => {
+                const themeId = e.target.value;
+                update((p) => ({ ...p, themeId }));
+                await fetch(`/api/presentations/${pres.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ themeId }),
+                });
+              }}
+              className="bg-background h-9 rounded-md border px-2 text-sm"
+            >
+              {themes.map((t) => (
+                <option key={t.id} value={t.id}>
+                  Tema: {t.name}
+                </option>
+              ))}
+            </select>
             <Button variant="outline" onClick={save} disabled={busy === "save"}>
               <Save className="size-4" /> Kaydet
             </Button>
             {previewUrl && (
-              <Button variant="outline" onClick={() => window.open(previewUrl, "_blank")}>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  window.open(`${previewUrl}?theme=${pres.themeId ?? globalThemeId}`, "_blank")
+                }
+              >
                 <ExternalLink className="size-4" /> Önizle
               </Button>
             )}
