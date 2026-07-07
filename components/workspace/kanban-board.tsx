@@ -450,51 +450,58 @@ function FirmRow({ f, onStatus, onRemove }: { f: Firm; onStatus: (id: string, s:
   const meta = stageMeta(f.stage as StageKey);
   const kind = classifyWebsite(f.website);
   return (
-    <div className="hover:bg-accent/40 flex flex-wrap items-center gap-2 px-3 py-2.5 pl-4 transition-colors sm:flex-nowrap sm:gap-3 sm:pl-10">
-      <span className={`grid size-9 shrink-0 place-items-center rounded-lg text-sm font-bold tabular-nums ${meta.badge}`} title="Fırsat skoru">
-        {f.coarseScore}
-      </span>
-      <div className="min-w-0 flex-1">
-        <Link href={`/firma/${f.id}`} target="_blank" rel="noopener noreferrer" className="font-medium hover:underline">{f.name}</Link>
-        <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 text-xs">
-          {f.googleRating != null && (
-            <span className="inline-flex items-center gap-0.5">
-              <Star className="size-3 fill-current text-amber-500" />
-              {f.googleRating.toFixed(1)}{f.googleReviews != null && ` (${f.googleReviews})`}
-            </span>
-          )}
-          {f.phone && <span>{f.phone}</span>}
-          {kind === "sosyal" ? (
-            <span className="text-fuchsia-600 dark:text-fuchsia-400">sosyal medya</span>
-          ) : kind !== "gercek" ? (
-            <span className="text-primary">site yok</span>
-          ) : null}
-          {f.status === "KAYIP" && f.lossReason && <span className="text-red-600">kayıp: {LOSS_LABEL[f.lossReason]}</span>}
+    <div className="hover:bg-accent/40 flex flex-col gap-2 px-3 py-2.5 transition-colors sm:flex-row sm:items-center sm:gap-3 sm:pl-10">
+      {/* Skor + isim + meta */}
+      <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
+        <span className={`grid size-9 shrink-0 place-items-center rounded-lg text-sm font-bold tabular-nums ${meta.badge}`} title="Fırsat skoru">
+          {f.coarseScore}
+        </span>
+        <div className="min-w-0 flex-1">
+          <Link href={`/firma/${f.id}`} target="_blank" rel="noopener noreferrer" className="font-medium break-words hover:underline">{f.name}</Link>
+          <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 text-xs">
+            {f.googleRating != null && (
+              <span className="inline-flex items-center gap-0.5">
+                <Star className="size-3 fill-current text-amber-500" />
+                {f.googleRating.toFixed(1)}{f.googleReviews != null && ` (${f.googleReviews})`}
+              </span>
+            )}
+            {f.phone && <span>{f.phone}</span>}
+            {kind === "sosyal" ? (
+              <span className="text-fuchsia-600 dark:text-fuchsia-400">sosyal medya</span>
+            ) : kind !== "gercek" ? (
+              <span className="text-primary">site yok</span>
+            ) : null}
+            {f.status === "KAYIP" && f.lossReason && <span className="text-red-600">kayıp: {LOSS_LABEL[f.lossReason]}</span>}
+          </div>
         </div>
       </div>
-      <Link
-        href={`/firma/${f.id}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex shrink-0 items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium"
-        title="Firma detayını yeni sekmede aç"
-      >
-        Detay <ExternalLink className="size-3.5" />
-      </Link>
-      <select
-        value={f.status}
-        onChange={(e) => onStatus(f.id, e.target.value)}
-        className={`h-8 shrink-0 rounded-lg border px-2 text-xs font-medium ${meta.badge}`}
-      >
-        {STAGES.map((st) => (
-          <optgroup key={st.key} label={st.label}>
-            {st.statuses.map((s) => (<option key={s} value={s}>{STATUS_LABEL[s]}</option>))}
-          </optgroup>
-        ))}
-      </select>
-      <button onClick={onRemove} className="text-muted-foreground hover:bg-accent shrink-0 rounded-md p-1.5 hover:text-red-600" title="Çalışma listemden çıkar">
-        <X className="size-4" />
-      </button>
+
+      {/* Aksiyonlar — mobilde ismin altında ayrı satır, masaüstünde satır içinde sağda */}
+      <div className="flex shrink-0 items-center gap-2 pl-12 sm:pl-0">
+        <Link
+          href={`/firma/${f.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex shrink-0 items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium"
+          title="Firma detayını yeni sekmede aç"
+        >
+          Detay <ExternalLink className="size-3.5" />
+        </Link>
+        <select
+          value={f.status}
+          onChange={(e) => onStatus(f.id, e.target.value)}
+          className={`h-8 min-w-0 flex-1 rounded-lg border px-2 text-xs font-medium sm:flex-none ${meta.badge}`}
+        >
+          {STAGES.map((st) => (
+            <optgroup key={st.key} label={st.label}>
+              {st.statuses.map((s) => (<option key={s} value={s}>{STATUS_LABEL[s]}</option>))}
+            </optgroup>
+          ))}
+        </select>
+        <button onClick={onRemove} className="text-muted-foreground hover:bg-accent shrink-0 rounded-md p-1.5 hover:text-red-600" title="Çalışma listemden çıkar">
+          <X className="size-4" />
+        </button>
+      </div>
     </div>
   );
 }
