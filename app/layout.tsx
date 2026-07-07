@@ -15,6 +15,7 @@ const mono = Geist_Mono({ variable: "--font-mono", subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "DamgaPanel — AI Satış Zekâsı",
   description: "Ajans içi AI destekli satış zekâsı paneli",
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({
