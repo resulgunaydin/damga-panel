@@ -52,17 +52,8 @@ export function SunumEditor({
     url: null,
     loading: false,
   });
-  const previewUrlRef = useRef<string | null>(null);
-
   const activeThemeId = pres ? (pres.themeId ?? globalThemeId) : globalThemeId;
   const activeThemeName = themes.find((t) => t.id === activeThemeId)?.name ?? "Tema";
-
-  // Blob URL sızıntısını önle.
-  useEffect(() => {
-    return () => {
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-    };
-  }, []);
 
   // Önizleme açıkken Esc ile kapat.
   useEffect(() => {
@@ -157,28 +148,24 @@ export function SunumEditor({
     }
   }
 
-  // Kaydedip PDF üretir; blob döndürür. preview=true → durum değişmez, inline.
-  async function buildPdf(previewMode: boolean): Promise<Blob> {
-    await persist();
-    const res = await fetch(
-      `/api/presentations/${pres!.id}/pdf${previewMode ? "?preview=1" : ""}`,
-      { method: "POST" },
-    );
-    if (!res.ok) throw new Error("PDF üretilemedi.");
-    return res.blob();
-  }
-
   async function downloadPdf() {
     if (!pres) return;
     setBusy("pdf");
     try {
-      const blob = await buildPdf(false);
+      await persist();
+      const res = await fetch(`/api/presentations/${pres.id}/pdf`, { method: "POST" });
+      if (!res.ok) throw new Error("PDF üretilemedi.");
+      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
+      // Mobil tarayıcılar için: bağlantıyı DOM'a ekleyip tıkla, sonra temizle.
       const a = document.createElement("a");
       a.href = url;
       a.download = `${businessName}-sunum.pdf`;
+      a.rel = "noopener";
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
       setMsg("PDF indirildi.");
       setTimeout(() => setMsg(null), 2500);
     } catch (e) {
@@ -188,14 +175,13 @@ export function SunumEditor({
     }
   }
 
+  // Önizleme: PDF'in kaynağı olan HTML sayfasını göster (her tarayıcıda/mobilde açılır).
   async function openPreview() {
     if (!pres) return;
     setPreview({ open: true, url: null, loading: true });
     try {
-      const blob = await buildPdf(true);
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-      const url = URL.createObjectURL(blob);
-      previewUrlRef.current = url;
+      await persist();
+      const url = `/sunum/${pres.id}?theme=${activeThemeId}&preview=1`;
       setPreview({ open: true, url, loading: false });
     } catch (e) {
       setPreview({ open: false, url: null, loading: false });
@@ -346,7 +332,7 @@ export function SunumEditor({
                 <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
                   <FileText className="text-primary size-4 shrink-0" />
                   <span className="truncate">
-                    PDF Önizleme
+                    Önizleme
                     <span className="text-muted-foreground hidden sm:inline">
                       {" · "}
                       {activeThemeName} · {businessName}
@@ -381,17 +367,17 @@ export function SunumEditor({
                   </button>
                 </div>
               </div>
-              {/* PDF gövdesi */}
-              <div className="relative flex-1 overflow-hidden bg-neutral-300/70 dark:bg-neutral-900">
+              {/* Gövde — PDF'in kaynağı HTML, mobile sığacak şekilde ölçekli */}
+              <div className="flex-1 overflow-auto bg-neutral-300/70 p-3 sm:p-5 dark:bg-neutral-900">
                 {preview.loading || !preview.url ? (
-                  <div className="absolute inset-0 grid place-items-center">
+                  <div className="grid h-full place-items-center">
                     <div className="flex flex-col items-center gap-3">
                       <Loader2 className="text-primary size-7 animate-spin" />
-                      <span className="text-muted-foreground text-sm">PDF hazırlanıyor…</span>
+                      <span className="text-muted-foreground text-sm">Hazırlanıyor…</span>
                     </div>
                   </div>
                 ) : (
-                  <iframe title="PDF önizleme" src={preview.url} className="h-full w-full border-0" />
+                  <PreviewFrame url={preview.url} />
                 )}
               </div>
             </div>
@@ -399,5 +385,51 @@ export function SunumEditor({
         </>
       )}
     </main>
+  );
+}
+
+// Sunum HTML'ini A4 genişliğinde render edip kapsayıcıya sığacak şekilde ölçekler.
+function PreviewFrame({ url }: { url: string }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const [height, setHeight] = useState(1123);
+
+  useEffect(() => {
+    function fit() {
+      const w = boxRef.current?.clientWidth ?? 794;
+      setScale(Math.min(1, w / 794));
+    }
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
+
+  return (
+    <div ref={boxRef} className="mx-auto w-full max-w-[794px]">
+      <div
+        className="mx-auto overflow-hidden bg-white shadow-xl"
+        style={{ width: 794 * scale, height: height * scale }}
+      >
+        <iframe
+          title="Sunum önizleme"
+          src={url}
+          onLoad={(e) => {
+            try {
+              const d = e.currentTarget.contentDocument;
+              if (d?.body) setHeight(Math.max(1123, d.body.scrollHeight));
+            } catch {
+              /* aynı köken — normalde erişilebilir */
+            }
+          }}
+          style={{
+            width: 794,
+            height,
+            border: 0,
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+          }}
+        />
+      </div>
+    </div>
   );
 }
