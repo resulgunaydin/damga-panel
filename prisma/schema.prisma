@@ -128,6 +128,7 @@ model Presentation {
   format        PresentationFormat @default(HTML)
   sectionConfig Json // bölüm aç/kapat + sıra
   content       Json // her bölümün (düzenlenmiş) içeriği
+  themeId       String? // seçili tema (boşsa global varsayılan)
   htmlOutput    String? // üretilen HTML çıktısı
   pdfPath       String? // üretilen PDF yolu
   status        PresentationStatus @default(TASLAK)
@@ -143,9 +144,12 @@ model PresentationTemplate {
   id              String             @id @default(cuid())
   defaultFormat   PresentationFormat @default(HTML)
   defaultSections Json // varsayılan açık/kapalı bölümler
-  logoUrl         String?
+  logoUrl         String? // base64 data-URI
   brandColor      String?
-  contact         Json? // iletişim bilgileri
+  agencyName      String? // ajans/marka adı (müşteri firmadan bağımsız)
+  website         String?
+  defaultThemeId  String? // global varsayılan tema
+  contact         Json? // { phone, email, address }
   updatedAt       DateTime           @updatedAt
 }
 

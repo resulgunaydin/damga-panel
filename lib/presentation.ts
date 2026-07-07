@@ -3,6 +3,20 @@
 // AI taslak üretir; son söz kullanıcıda (bölümleri düzenler/kapatır).
 
 import { generateText } from "@/lib/ai";
+import { getTheme, themeHead } from "./presentation/themes";
+import { DEFAULT_BRAND_COLOR } from "./presentation/brand";
+
+export type Branding = {
+  logoUrl?: string | null;
+  agencyName?: string | null;
+  website?: string | null;
+  brandColor?: string | null;
+  contact?: {
+    phone?: string | null;
+    email?: string | null;
+    address?: string | null;
+  } | null;
+};
 
 export type SectionKey =
   | "kapak"
@@ -140,85 +154,88 @@ export function renderHtml(input: {
   firmName: string;
   sections: SectionConfig[];
   content: Record<string, string>;
-  brandColor?: string;
+  themeId?: string | null;
+  branding?: Branding;
 }): string {
-  const brand = input.brandColor || "#ea580c";
+  const b = input.branding ?? {};
+  const accent = b.brandColor || DEFAULT_BRAND_COLOR;
+  const theme = getTheme(input.themeId);
+  const agency = (b.agencyName && b.agencyName.trim()) || "DamgaPanel";
   const enabled = input.sections.filter((s) => s.enabled && input.content[s.key]);
   const kapak = enabled.find((s) => s.key === "kapak");
   const rest = enabled.filter((s) => s.key !== "kapak");
   const tarih = new Date().toLocaleDateString("tr-TR", { year: "numeric", month: "long", day: "numeric" });
+  const yil = new Date().getFullYear();
+
+  const logoMark = b.logoUrl
+    ? `<img src="${b.logoUrl}" alt="${escapeHtml(agency)}">`
+    : `<span class="mark-dot"></span>${escapeHtml(agency)}`;
 
   const cover = `
     <div class="cover">
+      <div class="cover-noise"></div>
       <div class="cover-top">
-        <span class="mark">◆ DamgaPanel</span>
+        <span class="brand-mark">${logoMark}</span>
         <span class="eyebrow">Dijital Görünürlük Değerlendirmesi</span>
       </div>
       <div class="cover-main">
+        <span class="cover-kicker">Firmanıza özel hazırlanmış brifing</span>
         <h1>${escapeHtml(input.firmName)}</h1>
         ${kapak ? `<div class="lead">${renderBody(input.content["kapak"])}</div>` : ""}
       </div>
       <div class="cover-foot">
-        <span>${tarih}</span>
-        <span>${escapeHtml(input.firmName)} için hazırlanmıştır</span>
+        <div class="cover-foot-item"><span class="cfl">Tarih</span><span class="cfv">${tarih}</span></div>
+        <div class="cover-foot-item cover-foot-item--r"><span class="cfl">Hazırlayan</span><span class="cfv">${escapeHtml(agency)}</span></div>
       </div>
     </div>`;
 
+  const contact = b.contact ?? {};
+  const contactBits: string[] = [];
+  if (contact.phone) contactBits.push(`<span><span class="cl">Tel</span> ${escapeHtml(contact.phone)}</span>`);
+  if (contact.email) contactBits.push(`<span><span class="cl">E-posta</span> ${escapeHtml(contact.email)}</span>`);
+  if (b.website) contactBits.push(`<span><span class="cl">Web</span> ${escapeHtml(b.website)}</span>`);
+  if (contact.address) contactBits.push(`<span><span class="cl">Adres</span> ${escapeHtml(contact.address)}</span>`);
+  const contactRow = contactBits.length ? `<div class="cta-contact">${contactBits.join("")}</div>` : "";
+
+  const total = rest.length;
   const body = rest
-    .map(
-      (s, i) => `
-    <section>
+    .map((s, i) => {
+      const no = String(i + 1).padStart(2, "0");
+      const isCta = s.key === "cta";
+      return `
+    <section class="sec${isCta ? " sec--cta" : ""}">
       <div class="s-head">
-        <span class="s-no">${String(i + 1).padStart(2, "0")}</span>
-        <h2>${escapeHtml(s.title)}</h2>
+        <span class="s-no">${no}</span>
+        <div class="s-head-txt">
+          <span class="s-eyebrow">Bölüm ${no} / ${String(total).padStart(2, "0")}</span>
+          <h2>${escapeHtml(s.title)}</h2>
+        </div>
       </div>
       <div class="s-body">${renderBody(input.content[s.key])}</div>
-    </section>`,
-    )
+      ${isCta ? contactRow : ""}
+    </section>`;
+    })
     .join("");
+
+  const signoffLogo = b.logoUrl ? `<img src="${b.logoUrl}" alt="${escapeHtml(agency)}">` : "";
 
   return `<!doctype html><html lang="tr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(input.firmName)} — Sunum</title>
-<style>
-  :root{ --brand:${brand}; --ink:#1c1a17; --muted:#6b6560; --line:#e7e2da; --paper:#fbf9f5; }
-  @page{ size:A4; margin:0; }
-  *{ box-sizing:border-box; }
-  html,body{ margin:0; padding:0; }
-  body{ font-family:"Segoe UI",-apple-system,Helvetica,Arial,sans-serif; color:var(--ink); background:#fff; line-height:1.65; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  h1,h2{ font-family:Georgia,"Times New Roman",serif; letter-spacing:-.01em; }
-
-  /* Kapak — ilk sayfayı doldurur */
-  .cover{ min-height:297mm; padding:26mm 22mm; display:flex; flex-direction:column; justify-content:space-between;
-    background:
-      radial-gradient(120% 80% at 100% 0%, color-mix(in srgb, var(--brand) 16%, transparent), transparent 60%),
-      linear-gradient(180deg, var(--paper), #fff);
-    border-top:10px solid var(--brand); page-break-after:always; }
-  .cover-top{ display:flex; justify-content:space-between; align-items:center; }
-  .mark{ font-weight:800; color:var(--brand); letter-spacing:.02em; }
-  .eyebrow{ font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); }
-  .cover-main h1{ font-size:52px; line-height:1.05; margin:0 0 18px; }
-  .cover-main .lead p{ font-size:22px; line-height:1.4; color:#403b36; margin:0 0 10px; max-width:80%; }
-  .cover-foot{ display:flex; justify-content:space-between; font-size:12px; color:var(--muted); border-top:1px solid var(--line); padding-top:14px; }
-
-  /* İçerik */
-  .content{ padding:20mm 22mm; }
-  section{ margin:0 0 26px; page-break-inside:avoid; }
-  .s-head{ display:flex; align-items:baseline; gap:12px; border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:12px; }
-  .s-no{ font-family:Georgia,serif; font-weight:700; font-size:18px; color:var(--brand); min-width:30px; }
-  h2{ font-size:22px; margin:0; color:var(--ink); }
-  .s-body p{ margin:0 0 10px; }
-  .s-body ul{ margin:6px 0 10px; padding-left:0; list-style:none; }
-  .s-body li{ position:relative; padding-left:22px; margin:6px 0; }
-  .s-body li::before{ content:"→"; position:absolute; left:0; color:var(--brand); font-weight:700; }
-
-  footer{ margin-top:8mm; padding:12px 22mm 20mm; color:var(--muted); font-size:11px; border-top:1px solid var(--line); display:flex; justify-content:space-between; }
-</style></head><body>
+<title>${escapeHtml(input.firmName)} — Dijital Görünürlük Değerlendirmesi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+${themeHead(theme, accent)}
+</head><body>
 ${cover}
 <div class="content">
 ${body}
 </div>
-<footer><span>${escapeHtml(input.firmName)}</span><span>DamgaPanel</span></footer>
+<div class="signoff">
+  <div class="signoff-rule"></div>
+  ${signoffLogo}
+  <div class="brand">${escapeHtml(agency)}</div>
+  <div class="meta">${escapeHtml(input.firmName)} için hazırlanmıştır · ${tarih} · © ${yil}</div>
+</div>
 </body></html>`;
 }
 
