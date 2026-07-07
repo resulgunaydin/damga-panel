@@ -15,16 +15,17 @@ export async function GET(req: Request, { params }: Ctx) {
     return new Response("Sunum bulunamadı.", { status: 404 });
   }
 
-  // Açılma takibi (ilk açılışta)
-  if (!presentation.openedAt) {
+  const url = new URL(req.url);
+  const isPreview = url.searchParams.get("preview") === "1";
+  const themeOverride = url.searchParams.get("theme");
+
+  // Açılma takibi (ilk açılışta) — kendi önizlememizde işaretleme.
+  if (!presentation.openedAt && !isPreview) {
     await prisma.presentation.update({
       where: { id },
       data: { openedAt: new Date() },
     });
   }
-
-  const url = new URL(req.url);
-  const themeOverride = url.searchParams.get("theme");
   const branding = await getBranding();
   const html = renderHtml({
     firmName: presentation.business.name,
