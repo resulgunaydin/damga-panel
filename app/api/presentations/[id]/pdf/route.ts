@@ -7,8 +7,10 @@ import { renderPdf } from "@/lib/browser";
 type Ctx = { params: Promise<{ id: string }> };
 
 // Sunumu PDF olarak üretir (Playwright HTML→PDF, Bölüm 4.8).
-export async function POST(_req: Request, { params }: Ctx) {
+// ?preview=1 → sadece render; durum "URETILDI"e çekilmez, tarayıcıda gömülü gösterim için inline.
+export async function POST(req: Request, { params }: Ctx) {
   const { id } = await params;
+  const isPreview = new URL(req.url).searchParams.get("preview") === "1";
   const presentation = await prisma.presentation.findUnique({
     where: { id },
     include: { business: { select: { name: true } } },
@@ -25,14 +27,18 @@ export async function POST(_req: Request, { params }: Ctx) {
     branding,
   });
   const pdf = await renderPdf(html);
-  await prisma.presentation.update({
-    where: { id },
-    data: { status: "URETILDI" },
-  });
+  if (!isPreview) {
+    await prisma.presentation.update({
+      where: { id },
+      data: { status: "URETILDI" },
+    });
+  }
   return new NextResponse(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="sunum.pdf"`,
+      "Content-Disposition": isPreview
+        ? `inline; filename="onizleme.pdf"`
+        : `attachment; filename="sunum.pdf"`,
     },
   });
 }

@@ -1,18 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
-  Copy,
   Download,
   ExternalLink,
+  Eye,
   FileText,
+  Loader2,
+  Palette,
   RefreshCw,
   Save,
   Sparkles,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -44,9 +47,32 @@ export function SunumEditor({
   const [pres, setPres] = useState<Presentation | null>(initial);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [preview, setPreview] = useState<{ open: boolean; url: string | null; loading: boolean }>({
+    open: false,
+    url: null,
+    loading: false,
+  });
+  const previewUrlRef = useRef<string | null>(null);
 
-  const previewUrl = pres ? `/sunum/${pres.id}` : null;
+  const activeThemeId = pres ? (pres.themeId ?? globalThemeId) : globalThemeId;
+  const activeThemeName = themes.find((t) => t.id === activeThemeId)?.name ?? "Tema";
+
+  // Blob URL sızıntısını önle.
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    };
+  }, []);
+
+  // Önizleme açıkken Esc ile kapat.
+  useEffect(() => {
+    if (!preview.open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setPreview((p) => ({ ...p, open: false }));
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [preview.open]);
 
   async function create() {
     setBusy("create");
@@ -94,15 +120,20 @@ export function SunumEditor({
     update((p) => ({ ...p, content: { ...p.content, [key]: text } }));
   }
 
-  async function save() {
+  // Kaydeder (busy durumuna dokunmaz — PDF/önizleme akışları kendi göstergesini yönetir).
+  async function persist() {
     if (!pres) return;
+    await fetch(`/api/presentations/${pres.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sectionConfig: pres.sections, content: pres.content }),
+    });
+  }
+
+  async function save() {
     setBusy("save");
     try {
-      await fetch(`/api/presentations/${pres.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sectionConfig: pres.sections, content: pres.content }),
-      });
+      await persist();
       setMsg("Kaydedildi.");
       setTimeout(() => setMsg(null), 2000);
     } finally {
@@ -126,32 +157,54 @@ export function SunumEditor({
     }
   }
 
+  // Kaydedip PDF üretir; blob döndürür. preview=true → durum değişmez, inline.
+  async function buildPdf(previewMode: boolean): Promise<Blob> {
+    await persist();
+    const res = await fetch(
+      `/api/presentations/${pres!.id}/pdf${previewMode ? "?preview=1" : ""}`,
+      { method: "POST" },
+    );
+    if (!res.ok) throw new Error("PDF üretilemedi.");
+    return res.blob();
+  }
+
   async function downloadPdf() {
     if (!pres) return;
     setBusy("pdf");
     try {
-      await save();
-      const res = await fetch(`/api/presentations/${pres.id}/pdf`, { method: "POST" });
-      const blob = await res.blob();
+      const blob = await buildPdf(false);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `${businessName}-sunum.pdf`;
       a.click();
       URL.revokeObjectURL(url);
+      setMsg("PDF indirildi.");
+      setTimeout(() => setMsg(null), 2500);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Hata");
     } finally {
       setBusy(null);
     }
   }
 
-  async function copyMessage() {
-    if (!previewUrl) return;
-    const link = `${window.location.origin}${previewUrl}`;
-    await navigator.clipboard.writeText(
-      `Merhaba, ${businessName} için hazırladığımız kısa sunum: ${link}`,
-    );
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+  async function openPreview() {
+    if (!pres) return;
+    setPreview({ open: true, url: null, loading: true });
+    try {
+      const blob = await buildPdf(true);
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      const url = URL.createObjectURL(blob);
+      previewUrlRef.current = url;
+      setPreview({ open: true, url, loading: false });
+    } catch (e) {
+      setPreview({ open: false, url: null, loading: false });
+      setMsg(e instanceof Error ? e.message : "Önizleme oluşturulamadı.");
+    }
+  }
+
+  function closePreview() {
+    setPreview((p) => ({ ...p, open: false }));
   }
 
   return (
@@ -186,45 +239,59 @@ export function SunumEditor({
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={pres.themeId ?? globalThemeId}
-              onChange={async (e) => {
-                const themeId = e.target.value;
-                update((p) => ({ ...p, themeId }));
-                await fetch(`/api/presentations/${pres.id}`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ themeId }),
-                });
-              }}
-              className="bg-background h-9 rounded-md border px-2 text-sm"
-            >
-              {themes.map((t) => (
-                <option key={t.id} value={t.id}>
-                  Tema: {t.name}
-                </option>
-              ))}
-            </select>
-            <Button variant="outline" onClick={save} disabled={busy === "save"}>
-              <Save className="size-4" /> Kaydet
-            </Button>
-            {previewUrl && (
-              <Button
-                variant="outline"
-                onClick={() =>
-                  window.open(`${previewUrl}?theme=${pres.themeId ?? globalThemeId}`, "_blank")
-                }
+          <div className="bg-background/85 sticky top-14 z-20 flex flex-wrap items-center gap-2 rounded-xl border p-2 shadow-sm backdrop-blur">
+            {/* Tema seçici */}
+            <div className="relative flex items-center">
+              <Palette className="text-muted-foreground pointer-events-none absolute left-2.5 size-4" />
+              <select
+                value={activeThemeId}
+                onChange={async (e) => {
+                  const themeId = e.target.value;
+                  update((p) => ({ ...p, themeId }));
+                  await fetch(`/api/presentations/${pres.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ themeId }),
+                  });
+                }}
+                className="bg-background hover:bg-muted h-9 cursor-pointer appearance-none rounded-lg border pr-8 pl-8 text-sm font-medium transition-colors"
+                title="Tema"
               >
-                <ExternalLink className="size-4" /> Önizle
+                {themes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="text-muted-foreground pointer-events-none absolute right-2.5 size-4" />
+            </div>
+
+            <div className="ml-auto flex items-center gap-1.5">
+              <Button variant="ghost" size="lg" onClick={save} disabled={busy === "save"}>
+                {busy === "save" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Save className="size-4" />
+                )}
+                Kaydet
               </Button>
-            )}
-            <Button variant="outline" onClick={downloadPdf} disabled={busy === "pdf"}>
-              <Download className="size-4" /> {busy === "pdf" ? "PDF…" : "PDF indir"}
-            </Button>
-            <Button variant="outline" onClick={copyMessage}>
-              <Copy className="size-4" /> {copied ? "Kopyalandı" : "Mesajı kopyala"}
-            </Button>
+              <Button variant="outline" size="lg" onClick={openPreview} disabled={preview.loading}>
+                {preview.loading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Eye className="size-4" />
+                )}
+                Önizle
+              </Button>
+              <Button size="lg" onClick={downloadPdf} disabled={busy === "pdf"}>
+                {busy === "pdf" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Download className="size-4" />
+                )}
+                {busy === "pdf" ? "Hazırlanıyor…" : "PDF indir"}
+              </Button>
+            </div>
           </div>
 
           {pres.openedAt && (
@@ -271,6 +338,64 @@ export function SunumEditor({
               </div>
             ))}
           </div>
+
+          {preview.open && (
+            <div className="fixed inset-0 z-50 flex flex-col bg-black/70 backdrop-blur-sm">
+              {/* Üst bar */}
+              <div className="bg-background flex items-center justify-between gap-3 border-b px-4 py-2.5">
+                <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
+                  <FileText className="text-primary size-4 shrink-0" />
+                  <span className="truncate">
+                    PDF Önizleme
+                    <span className="text-muted-foreground hidden sm:inline">
+                      {" · "}
+                      {activeThemeName} · {businessName}
+                    </span>
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {preview.url && (
+                    <a
+                      href={preview.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-muted-foreground hover:text-foreground hover:bg-muted hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm sm:inline-flex"
+                    >
+                      <ExternalLink className="size-4" /> Yeni sekme
+                    </a>
+                  )}
+                  <Button size="lg" onClick={downloadPdf} disabled={busy === "pdf"}>
+                    {busy === "pdf" ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Download className="size-4" />
+                    )}
+                    İndir
+                  </Button>
+                  <button
+                    onClick={closePreview}
+                    className="hover:bg-muted grid size-9 place-items-center rounded-lg"
+                    aria-label="Kapat"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+              </div>
+              {/* PDF gövdesi */}
+              <div className="relative flex-1 overflow-hidden bg-neutral-300/70 dark:bg-neutral-900">
+                {preview.loading || !preview.url ? (
+                  <div className="absolute inset-0 grid place-items-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="text-primary size-7 animate-spin" />
+                      <span className="text-muted-foreground text-sm">PDF hazırlanıyor…</span>
+                    </div>
+                  </div>
+                ) : (
+                  <iframe title="PDF önizleme" src={preview.url} className="h-full w-full border-0" />
+                )}
+              </div>
+            </div>
+          )}
         </>
       )}
     </main>
