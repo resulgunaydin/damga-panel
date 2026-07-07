@@ -10,6 +10,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const data: Record<string, unknown> = {};
   if (body.sectionConfig) data.sectionConfig = body.sectionConfig;
   if (body.content) data.content = body.content;
+  if (body.themeId !== undefined) data.themeId = body.themeId;
   if (body.format === "HTML" || body.format === "PDF" || body.format === "IKISI") {
     data.format = body.format;
   }

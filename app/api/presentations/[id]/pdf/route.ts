@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { renderHtml, type SectionConfig } from "@/lib/presentation";
+import { getBranding } from "@/lib/branding";
 import { renderPdf } from "@/lib/browser";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -15,10 +16,13 @@ export async function POST(_req: Request, { params }: Ctx) {
   if (!presentation) {
     return NextResponse.json({ error: "Sunum bulunamadı." }, { status: 404 });
   }
+  const branding = await getBranding();
   const html = renderHtml({
     firmName: presentation.business.name,
     sections: presentation.sectionConfig as unknown as SectionConfig[],
     content: presentation.content as Record<string, string>,
+    themeId: presentation.themeId,
+    branding,
   });
   const pdf = await renderPdf(html);
   await prisma.presentation.update({
