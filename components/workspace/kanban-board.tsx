@@ -280,7 +280,7 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
   ];
 
   return (
-    <main className="flex min-h-full flex-1 flex-col gap-4 px-6 py-6">
+    <main className="flex min-h-full flex-1 flex-col gap-4 px-4 py-6 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-heading text-2xl font-bold">Çalışma Listem</h1>
@@ -450,7 +450,7 @@ function FirmRow({ f, onStatus, onRemove }: { f: Firm; onStatus: (id: string, s:
   const meta = stageMeta(f.stage as StageKey);
   const kind = classifyWebsite(f.website);
   return (
-    <div className="hover:bg-accent/40 flex items-center gap-3 px-4 py-2.5 pl-10 transition-colors">
+    <div className="hover:bg-accent/40 flex flex-wrap items-center gap-2 px-3 py-2.5 pl-4 transition-colors sm:flex-nowrap sm:gap-3 sm:pl-10">
       <span className={`grid size-9 shrink-0 place-items-center rounded-lg text-sm font-bold tabular-nums ${meta.badge}`} title="Fırsat skoru">
         {f.coarseScore}
       </span>

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import {
   ChevronRight,
   MapPin,
+  Menu,
   Plus,
   Radar,
   Search,
@@ -72,6 +73,7 @@ export function Workspace({
   const [q, setQ] = useState("");
   const [scanFilter, setScanFilter] = useState<Arama["scanState"] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobil çekmece
 
   const [wiz, setWiz] = useState({ open: false, city: "", district: "", sector: "", kw: [] as string[], kwInput: "" });
   const [sekDialog, setSekDialog] = useState<{ open: boolean; draft: Sector[] }>({ open: false, draft: [] });
@@ -168,6 +170,7 @@ export function Workspace({
   }
   function pickParent(key: string) {
     setSel(groupBy === "konum" ? { il: key, ilce: null, sektor: null } : { il: null, ilce: null, sektor: key });
+    setSidebarOpen(false);
   }
   function pickChild(parent: string, child: string) {
     setSel(
@@ -175,6 +178,7 @@ export function Workspace({
         ? { il: parent, ilce: child, sektor: null }
         : { il: child, ilce: null, sektor: parent },
     );
+    setSidebarOpen(false);
   }
   function switchMode(mode: "konum" | "sektor") {
     setGroupBy(mode);
@@ -245,8 +249,19 @@ export function Workspace({
 
   return (
     <div className="flex min-h-full flex-1">
-      {/* ── Sol: grup ağacı ── */}
-      <aside className="bg-sidebar/50 flex w-64 shrink-0 flex-col border-r">
+      {/* Mobil çekmece arka planı */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      {/* ── Sol: grup ağacı (mobilde çekmece) ── */}
+      <aside
+        className={`bg-sidebar md:bg-sidebar/50 fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 transform flex-col border-r shadow-xl transition-transform md:static md:z-auto md:w-64 md:translate-x-0 md:shadow-none ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <div className="flex items-center gap-1 p-2">
           <button
             onClick={() => switchMode("konum")}
@@ -268,7 +283,10 @@ export function Workspace({
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-2 pt-0 text-sm">
           <button
-            onClick={() => setSel(EMPTY_SEL)}
+            onClick={() => {
+              setSel(EMPTY_SEL);
+              setSidebarOpen(false);
+            }}
             className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 ${
               !sel.il && !sel.sektor ? "bg-primary/10 text-primary font-medium" : "hover:bg-accent"
             }`}
@@ -345,17 +363,26 @@ export function Workspace({
 
       {/* ── Sağ: merkez ── */}
       <section className="flex min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-end justify-between gap-3 border-b px-6 py-4">
-          <div>
-            <h1 className="font-heading text-2xl font-bold">{baslik}</h1>
-            <p className="text-muted-foreground text-sm">{visible.length} arama</p>
+        <header className="flex flex-wrap items-end justify-between gap-3 border-b px-4 py-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="hover:bg-accent -ml-1 shrink-0 rounded-lg p-2 md:hidden"
+              aria-label="Grupları aç"
+            >
+              <Menu className="size-5" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="font-heading truncate text-xl font-bold sm:text-2xl">{baslik}</h1>
+              <p className="text-muted-foreground text-sm">{visible.length} arama</p>
+            </div>
           </div>
           <Button onClick={() => setWiz((w) => ({ ...w, open: true, city: groupBy === "konum" && sel.il ? sel.il : "", sector: groupBy === "sektor" && sel.sektor ? sel.sektor : "" }))}>
             <Plus className="size-4" /> Yeni arama
           </Button>
         </header>
 
-        <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3">
+        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3 sm:px-6">
           <div className="relative min-w-52 flex-1">
             <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
             <Input placeholder="Ara…" value={q} onChange={(e) => setQ(e.target.value)} className="pl-9" />
@@ -375,7 +402,7 @@ export function Workspace({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {visible.length === 0 ? (
             <div className="text-muted-foreground flex h-full min-h-64 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed text-center">
               <Sparkles className="size-8 opacity-40" />
