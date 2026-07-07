@@ -10,7 +10,7 @@ import {
   ListChecks,
   Moon,
   Package,
-  Sparkles,
+  Settings,
   Stamp,
   Sun,
 } from "lucide-react";
@@ -21,7 +21,7 @@ const LINKS = [
   { href: "/gorevler", label: "Görevler", icon: ListChecks },
   { href: "/hizmetler", label: "Hizmetler", icon: Package },
   { href: "/kullanim", label: "Kullanım", icon: Gauge },
-  { href: "/ayarlar", label: "AI", icon: Sparkles },
+  { href: "/ayarlar", label: "Ayarlar", icon: Settings },
 ];
 
 function ThemeToggle() {
