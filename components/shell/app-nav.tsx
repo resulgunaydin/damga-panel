@@ -8,6 +8,7 @@ import {
   Layers,
   LayoutGrid,
   ListChecks,
+  LogOut,
   Moon,
   Package,
   Settings,
@@ -50,6 +51,26 @@ function ThemeToggle() {
   );
 }
 
+function LogoutButton() {
+  const [busy, setBusy] = useState(false);
+  async function logout() {
+    setBusy(true);
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    window.location.href = "/giris";
+  }
+  return (
+    <button
+      onClick={logout}
+      disabled={busy}
+      className="text-muted-foreground hover:text-foreground hover:bg-accent grid size-9 place-items-center rounded-lg transition-colors"
+      title="Çıkış yap"
+      aria-label="Çıkış yap"
+    >
+      <LogOut className="size-4.5" />
+    </button>
+  );
+}
+
 export function AppNav() {
   const pathname = usePathname();
 
@@ -87,8 +108,9 @@ export function AppNav() {
           })}
         </nav>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
           <ThemeToggle />
+          <LogoutButton />
         </div>
       </div>
     </header>
