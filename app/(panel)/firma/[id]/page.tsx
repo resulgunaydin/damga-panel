@@ -17,8 +17,9 @@ export default async function FirmaPage({
     where: { id },
     include: {
       search: { select: { city: true, district: true, sector: true } },
-      messages: { where: { kind: "ON_MESAJ" }, orderBy: { createdAt: "desc" }, take: 1 },
+      messages: { where: { kind: "ARAMA_SCRIPT" }, orderBy: { createdAt: "desc" }, take: 1 },
       activities: { orderBy: { createdAt: "desc" }, take: 30 },
+      appointments: { orderBy: { scheduledAt: "desc" } },
       analyses: { orderBy: { generatedAt: "desc" } },
       customer: {
         include: {
@@ -68,6 +69,13 @@ export default async function FirmaPage({
           : null,
       }}
       initialMessage={business.messages[0]?.content ?? null}
+      appointments={business.appointments.map((ap) => ({
+        id: ap.id,
+        scheduledAt: ap.scheduledAt.toISOString(),
+        location: ap.location,
+        note: ap.note,
+        status: ap.status,
+      }))}
       activities={business.activities.map((a) => ({
         id: a.id,
         kind: a.kind,

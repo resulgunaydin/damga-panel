@@ -7,6 +7,20 @@
 
 ---
 
+> ## ⚠️ 2026-07 — Telefon-arama pivotu (güncel akış)
+> Toplu WhatsApp mesajı yüzünden ban yenildiği için **soğuk temas artık telefonla arama**.
+> Aşağıdaki 4.4 "Ön mesaj" bölümü emekli edildi; güncel akış:
+> **Ara → Kaba Eleme → Çalışma Listeme seç → Analiz+Sunum+Arama script'i hazırla (aramadan ÖNCE) →
+> Telefonla ara → kabul → sunum dosyasını WhatsApp'tan yolla → inceleme takibi → Randevu → Toplantı → Müşteri.**
+> - **Yeni durumlar:** `ARAMAYA_HAZIR`, `ARANDI_ULASILAMADI`, `SUNUM_GONDERILDI`, `RANDEVU` (eski `ON_MESAJ_GONDERILDI`/`ULASILAMADI`/`POTANSIYEL`/`SUNUM_YAPILDI` kaldırıldı).
+> - **Yeni modeller:** `Call` (arama sonucu), `Appointment` (randevu).
+> - **Randevular:** uygulama içi ay-takvimi (`/randevular`) + Görev Kutusuna hatırlatma; nav'da aktif görev sayısı rozeti. (Google Takvim entegrasyonu denendi, sonra kaldırıldı — dış bağımlılık istenmedi.)
+> - **Ön mesaj üretimi → arama script'i** (firmaya özel açılış + itiraz notları; `MessageKind.ARAMA_SCRIPT`).
+> - **Bugün Aranacaklar:** Çalışma Listem içinde bir sekme (ayrı yapı değil); firmalar `inCallList` ile elle işaretlenir.
+> - WhatsApp korunur ama yalnızca telefonda onay verene 1-1 sunum/dosya göndermek için.
+
+---
+
 ## 0. Bu doküman nedir?
 
 Bu belge, dijital bir ajansın **kendi iç kullanımı** için geliştireceği AI destekli satış zekâsı panelinin tam tasarımıdır. Amaç: dağınık fikir kararlarını, uygulamaya başlanabilecek tek bir kaynağa dönüştürmek. Satılık bir ürün (SaaS) **değildir** — tek şirket, tek kullanıcı içindir.
