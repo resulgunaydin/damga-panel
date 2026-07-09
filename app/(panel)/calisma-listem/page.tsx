@@ -16,8 +16,11 @@ export default async function CalismaListemPage() {
       lossReason: true,
       phone: true,
       website: true,
+      address: true,
       googleRating: true,
       googleReviews: true,
+      inCallList: true,
+      nextCallAt: true,
       searchId: true,
       manualAdded: true,
       search: {
@@ -42,8 +45,12 @@ export default async function CalismaListemPage() {
         lossReason: b.lossReason,
         phone: b.phone,
         website: b.website,
+        address: b.address,
+        mapsUri: null,
         googleRating: b.googleRating,
         googleReviews: b.googleReviews,
+        inCallList: b.inCallList,
+        nextCallAt: b.nextCallAt ? b.nextCallAt.toISOString() : null,
         context: b.search
           ? `${b.search.city}${b.search.district ? " · " + b.search.district : ""} · ${b.search.sector}`
           : null,

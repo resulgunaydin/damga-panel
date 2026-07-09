@@ -3,14 +3,15 @@
 
 import { prisma } from "@/lib/prisma";
 
-export type FollowUpDays = { onMesaj: number; sunum1: number; sunum2: number; sunum3: number };
-const DEFAULTS: FollowUpDays = { onMesaj: 3, sunum1: 3, sunum2: 7, sunum3: 15 };
+export type FollowUpDays = { recall: number; sunum1: number; sunum2: number; sunum3: number };
+const DEFAULTS: FollowUpDays = { recall: 2, sunum1: 3, sunum2: 7, sunum3: 15 };
 
 export async function getFollowUpDays(): Promise<FollowUpDays> {
   const row = await prisma.appSetting.findUnique({ where: { key: "followup.days" } });
-  const v = (row?.value ?? {}) as Partial<FollowUpDays>;
+  const v = (row?.value ?? {}) as Partial<FollowUpDays> & { onMesaj?: number };
   return {
-    onMesaj: v.onMesaj ?? DEFAULTS.onMesaj,
+    // Eski ayar "onMesaj" alanını "recall" için geriye-uyumlu oku.
+    recall: v.recall ?? v.onMesaj ?? DEFAULTS.recall,
     sunum1: v.sunum1 ?? DEFAULTS.sunum1,
     sunum2: v.sunum2 ?? DEFAULTS.sunum2,
     sunum3: v.sunum3 ?? DEFAULTS.sunum3,
@@ -37,7 +38,7 @@ export async function generateFollowUpTasks(): Promise<number> {
     where: {
       inWorkList: true,
       blacklisted: false,
-      status: { in: ["ON_MESAJ_GONDERILDI", "SUNUM_YAPILDI", "TEKLIF_YAPILDI"] },
+      status: { in: ["ARANDI_ULASILAMADI", "SUNUM_GONDERILDI", "TEKLIF_YAPILDI"] },
     },
     select: { id: true, name: true, status: true, updatedAt: true },
   });
@@ -47,12 +48,12 @@ export async function generateFollowUpTasks(): Promise<number> {
     const gun = daysSince(b.updatedAt);
     let title: string | null = null;
 
-    if (b.status === "ON_MESAJ_GONDERILDI" && gun >= cfg.onMesaj) {
-      title = `Ön mesaja dönüş yok — takip mesajı at (${b.name})`;
-    } else if (b.status === "SUNUM_YAPILDI") {
+    if (b.status === "ARANDI_ULASILAMADI" && gun >= cfg.recall) {
+      title = `Tekrar ara — ulaşılamamıştı (${b.name})`;
+    } else if (b.status === "SUNUM_GONDERILDI") {
       if (gun >= cfg.sunum3) title = `Yeni kampanya öner (${b.name})`;
       else if (gun >= cfg.sunum2) title = `Teklifi hatırlat (${b.name})`;
-      else if (gun >= cfg.sunum1) title = `Firmayı ara (${b.name})`;
+      else if (gun >= cfg.sunum1) title = `İncelediler mi? Firmayı ara (${b.name})`;
     } else if (b.status === "TEKLIF_YAPILDI" && gun >= cfg.sunum2) {
       title = `Teklif takibi yap (${b.name})`;
     }

@@ -8,24 +8,28 @@ import type { MessageKind } from "@/lib/generated/prisma/enums";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// Ön mesaj sistem yönergesi (Bölüm 4.4): araştırılmış hissi veren nabız yoklama, satış değil.
-// Ajans adına (kurumsal ama sıcak) yazılır; kaba eleme gözlemlerine dayanır (jargon yok).
-function onMesajSystem(agency: string): string {
-  return `Sen, dijital hizmetler veren "${agency}" firması adına, potansiyel bir müşteri firmaya gönderilecek ilk WhatsApp mesajını yazıyorsun.
-Amaç: firmayı önceden incelediğini hissettirip kısa bir görüşmeye kapı aralamak — bu mesajda satış YAPMA, fiyat KONUŞMA.
+// Arama script'i sistem yönergesi (telefon pivotu): firmayı TELEFONLA ararken kullanılacak
+// kısa açılış konuşması + olası itirazlara sözlü cevap notları. Satış değil, sunum göndermeye izin alma.
+function aramaScriptSystem(agency: string): string {
+  return `Sen, dijital hizmetler veren "${agency}" firması adına saha ekibine, bir firmayı TELEFONLA ararken kullanacağı kısa bir konuşma metni (script) hazırlıyorsun.
+Amaç: kısa ve doğal bir açılışla firmanın ilgisini ölçmek ve "size hazırladığımız kısa bir sunumu göndersek inceler misiniz?" iznini almak. Telefonda SATIŞ YAPMA, FİYAT KONUŞMA, uzun konuşturma.
 
 Ses ve üslup:
-- "${agency}" adına, KURUMSAL ama sıcak bir dille yaz. Bir firma temsilcisi konuşuyor; laubali, aşırı samimi ya da bir arkadaş gibi DEĞİL.
-- Mesajın doğal bir yerinde kendini "${agency}" olarak belli et; firmayı önceden incelediğin doğal biçimde hissedilsin ("...incelerken fark ettik" gibi), ama "sizi araştırdık" diye zorlama.
-- Türkçe, 3-4 kısa cümle. Çoğu insan teknik terim anlamaz: SEO, SSL, viewport, responsive gibi jargon KULLANMA; her şeyi günlük dille anlat.
+- "${agency}" adına, KURUMSAL ama sıcak ve öz. Telefonda karşı taraf meşguldür; kısa cümleler.
+- Türkçe. Teknik terim (SEO, SSL, responsive) KULLANMA; günlük dille anlat.
+- Konuşuluyormuş gibi yaz; okunacak bir paragraf değil, telefonda söylenecek doğal cümleler.
 
-İçerik kuralları:
-- SADECE sana verilen gözlemlere dayan; veri dışında hiçbir şey uydurma.
-- Verildiyse önce olumlu bir tespitle başla (işini iyi yaptıklarını hissettir), sonra EN FAZLA İKİ eksiği nazikçe söyle ve bunun onlara ne kaybettirdiğini tek sade cümleyle bağla. Firmayı detaya boğma.
-- Fiyat, paket, hizmet listesi ya da rakam VERME.
-- En fazla bir emoji; abartılı övgü yok.
-- Sonunda kısa bir görüşme için nazik, cevabı kolaylaştıran bir soru olsun.
-- Sadece mesaj metnini yaz; açıklama, tırnak veya başlık ekleme.`;
+Çıktı biçimi (aynen bu başlıklarla, sade metin, madde işareti olarak "-" kullan):
+AÇILIŞ:
+- Selam + kendini "${agency}" olarak tanıtma + aradığın kişiye 1 cümlede neden aradığın (önceden incelediğini doğal hissettir).
+NEDEN ARIYORUM:
+- Verilen gözlemlerden EN FAZLA İKİ tanesini sade dille, tek cümleyle söyle; bunun onlara ne kaybettirdiğini kısaca bağla. Olumlu tespit verildiyse önce onunla başla.
+KABUL SORUSU:
+- "Hazırladığımız kısa sunumu WhatsApp'tan göndersek inceler misiniz?" fikrini nazik ve cevabı kolay bir soruyla sor.
+OLASI İTİRAZLAR:
+- 3 madde: sık itiraz (ör. "vaktim yok", "ilgilenmiyorum", "zaten sitemiz var") → her birine tek cümlelik sakin, ısrarcı olmayan sözlü cevap.
+
+Kurallar: SADECE verilen gözlemlere dayan, uydurma. Fiyat/paket/rakam verme. Sadece script'i yaz; ekstra açıklama ekleme.`;
 }
 
 // Kaba eleme sinyali → müşteriye dönük, jargonsuz gözlem cümlesi.
@@ -69,7 +73,7 @@ function buildPrompt(input: {
   observations: string[];
 }): string {
   const lines = [
-    `"${input.agency}" adına aşağıdaki firmaya gönderilecek ilk WhatsApp mesajını yaz.`,
+    `"${input.agency}" adına aşağıdaki firmayı telefonla ararken kullanılacak arama script'ini yaz.`,
     ``,
     `Firma: ${input.name}`,
   ];
@@ -96,11 +100,11 @@ export async function GET(_req: Request, { params }: Ctx) {
   return NextResponse.json({ messages });
 }
 
-// Firma için mesaj üretir (şimdilik ON_MESAJ). Cache: varsa üretmez, regenerate ile yeniden.
+// Firma için mesaj üretir (varsayılan ARAMA_SCRIPT). Cache: varsa üretmez, regenerate ile yeniden.
 export async function POST(req: Request, { params }: Ctx) {
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
-  const kind: MessageKind = body.kind ?? "ON_MESAJ";
+  const kind: MessageKind = body.kind ?? "ARAMA_SCRIPT";
   const regenerate = body.regenerate === true;
 
   const business = await prisma.business.findUnique({
@@ -126,7 +130,7 @@ export async function POST(req: Request, { params }: Ctx) {
         }),
       compute: async () => {
         const result = await generateText({
-          system: onMesajSystem(agency),
+          system: aramaScriptSystem(agency),
           prompt: buildPrompt({
             agency,
             name: business.name,
@@ -136,7 +140,7 @@ export async function POST(req: Request, { params }: Ctx) {
             observations: observationsFromBreakdown(business.scoreBreakdown),
           }),
           tier: "simple",
-          maxTokens: 350,
+          maxTokens: kind === "ARAMA_SCRIPT" ? 600 : 350,
         });
         const msg = await prisma.message.create({
           data: {
@@ -146,7 +150,15 @@ export async function POST(req: Request, { params }: Ctx) {
             model: `${result.provider}:${result.model}`,
           },
         });
-        await logActivity(id, `Ön mesaj üretildi (${result.provider}).`);
+        // Arama script'i üretmek "aramaya hazır" sinyalidir: YENI → ARAMAYA_HAZIR.
+        if (kind === "ARAMA_SCRIPT" && business.status === "YENI") {
+          await prisma.business.update({
+            where: { id },
+            data: { status: "ARAMAYA_HAZIR", stage: "ELEME" },
+          });
+        }
+        const etiket = kind === "ARAMA_SCRIPT" ? "Arama script'i" : "Mesaj";
+        await logActivity(id, `${etiket} üretildi (${result.provider}).`);
         return msg;
       },
     });

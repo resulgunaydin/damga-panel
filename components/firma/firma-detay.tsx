@@ -1,37 +1,61 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
   Ban,
+  CalendarPlus,
   Check,
+  Clock,
   Copy,
   Globe,
-  MessageCircle,
   Package,
   Phone,
+  PhoneOff,
   RefreshCw,
   RotateCcw,
   Sparkles,
   Star,
+  ThumbsDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { classifyWebsite } from "@/lib/website";
 import { IsTakibi, type Job } from "@/components/firma/is-takibi";
 import { AnalizPanel, type AnalysisRecord } from "@/components/firma/analiz-panel";
 
 const STATUS_LABEL: Record<string, string> = {
   YENI: "Yeni",
-  ON_MESAJ_GONDERILDI: "Ön mesaj gönderildi",
-  ULASILAMADI: "Ulaşılamadı",
-  POTANSIYEL: "Potansiyel",
-  SUNUM_YAPILDI: "Sunum yapıldı",
+  ARAMAYA_HAZIR: "Aramaya hazır",
+  ARANDI_ULASILAMADI: "Arandı — ulaşılamadı",
+  SUNUM_GONDERILDI: "Sunum gönderildi",
+  RANDEVU: "Randevu ayarlandı",
   TEKLIF_YAPILDI: "Teklif yapıldı",
   KAYIP: "Kayıp",
   IS_DEVAM: "İş devam ediyor",
   IS_BITTI: "İş bitti",
+};
+
+const CALL_LOSS_REASONS: [string, string][] = [
+  ["ILGISIZ", "İlgisiz"],
+  ["FIYAT", "Fiyat"],
+  ["RAKIBE_GITTI", "Rakibe gitti"],
+  ["IHTIYAC_YOK", "İhtiyaç yok"],
+  ["ULASILAMADI", "Ulaşılamadı"],
+];
+
+const CALL_OUTCOME_LABEL: Record<string, string> = {
+  ULASILDI_KABUL: "Ulaşıldı — sunum istiyor",
+  ULASILDI_RET: "Ulaşıldı — ilgilenmiyor",
+  ULASILAMADI: "Ulaşılamadı",
+  TEKRAR_ARA: "Sonra tekrar ara",
 };
 
 type Business = {
@@ -48,16 +72,13 @@ type Business = {
   context: string | null;
 };
 type Activity = { id: string; kind: string; message: string; createdAt: string };
-
-// Telefonu wa.me için uluslararası (90…) biçime çevirir.
-function waNumber(phone: string | null): string | null {
-  if (!phone) return null;
-  let d = phone.replace(/\D/g, "");
-  if (d.startsWith("90")) return d;
-  if (d.startsWith("0")) return "90" + d.slice(1);
-  if (d.length === 10) return "90" + d; // 5xx…
-  return d;
-}
+type AppointmentRecord = {
+  id: string;
+  scheduledAt: string;
+  location: string | null;
+  note: string | null;
+  status: string;
+};
 
 type Opportunity = { area: string; priority: number; reasons: string[] };
 
@@ -65,6 +86,7 @@ export function FirmaDetay({
   business,
   opportunities,
   initialMessage,
+  appointments: initialAppointments,
   activities: initialActivities,
   isCustomer,
   jobs,
@@ -76,6 +98,7 @@ export function FirmaDetay({
   business: Business;
   opportunities: Opportunity[];
   initialMessage: string | null;
+  appointments: AppointmentRecord[];
   activities: Activity[];
   isCustomer: boolean;
   jobs: Job[];
@@ -93,6 +116,63 @@ export function FirmaDetay({
   const [note, setNote] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
   const [blacklisted, setBlacklisted] = useState(business.blacklisted);
+  const [callLossOpen, setCallLossOpen] = useState(false);
+  const [scriptOpen, setScriptOpen] = useState(true);
+  const [appointments, setAppointments] = useState<AppointmentRecord[]>(initialAppointments);
+  const [apt, setApt] = useState({ when: "", location: "", note: "" });
+  const [aptBusy, setAptBusy] = useState(false);
+
+  // Aramaya uygun (eleme) aşamasındaki durumlar — arama sonucu butonları burada gösterilir.
+  const isCallable =
+    status === "YENI" || status === "ARAMAYA_HAZIR" || status === "ARANDI_ULASILAMADI";
+  // Sunum gönderildikten sonra randevu ayarlanabilir.
+  const canSchedule =
+    status === "SUNUM_GONDERILDI" || status === "RANDEVU" || status === "TEKLIF_YAPILDI";
+
+  async function createAppointment() {
+    if (!apt.when) return;
+    setAptBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/businesses/${business.id}/appointments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scheduledAt: new Date(apt.when).toISOString(),
+          location: apt.location,
+          note: apt.note,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Randevu kaydedilemedi.");
+      const ap = data.appointment;
+      setAppointments((list) => [
+        {
+          id: ap.id,
+          scheduledAt: ap.scheduledAt,
+          location: ap.location,
+          note: ap.note,
+          status: ap.status,
+        },
+        ...list,
+      ]);
+      setStatus("RANDEVU");
+      setActivities((a) => [
+        {
+          id: crypto.randomUUID(),
+          kind: "SISTEM",
+          message: `Randevu ayarlandı: ${new Date(ap.scheduledAt).toLocaleString("tr-TR")}`,
+          createdAt: new Date().toISOString(),
+        },
+        ...a,
+      ]);
+      setApt({ when: "", location: "", note: "" });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Randevu kaydedilemedi.");
+    } finally {
+      setAptBusy(false);
+    }
+  }
 
   async function toggleBlacklist(next: boolean) {
     if (next && !confirm("Firma kara listeye alınsın mı? Listelerde ve keşifte bir daha gösterilmez."))
@@ -120,12 +200,6 @@ export function FirmaDetay({
     }
   }
 
-  const wa = waNumber(business.phone);
-  const waLink =
-    wa && message
-      ? `https://wa.me/${wa}?text=${encodeURIComponent(message)}`
-      : null;
-
   async function generate(regenerate = false) {
     setBusy(true);
     setErr(null);
@@ -133,17 +207,19 @@ export function FirmaDetay({
       const res = await fetch(`/api/businesses/${business.id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "ON_MESAJ", regenerate }),
+        body: JSON.stringify({ kind: "ARAMA_SCRIPT", regenerate }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Üretim başarısız.");
       setMessage(data.message.content);
       if (!data.cached) {
+        // Script üretmek "aramaya hazır" sinyali (server tarafında YENI → ARAMAYA_HAZIR).
+        if (status === "YENI") setStatus("ARAMAYA_HAZIR");
         setActivities((a) => [
           {
             id: crypto.randomUUID(),
             kind: "SISTEM",
-            message: "Ön mesaj üretildi.",
+            message: "Arama script'i üretildi.",
             createdAt: new Date().toISOString(),
           },
           ...a,
@@ -191,30 +267,45 @@ export function FirmaDetay({
     setTimeout(() => setCopied(false), 1500);
   }
 
-  async function markSent() {
+  // Telefon araması sonucunu kaydeder (telefon pivotu).
+  async function recordOutcome(
+    outcome: "ULASILDI_KABUL" | "ULASILDI_RET" | "ULASILAMADI" | "TEKRAR_ARA",
+    extra?: { lossReason?: string; nextCallAt?: string },
+  ) {
     setBusy(true);
+    setErr(null);
     try {
-      const res = await fetch(`/api/businesses/${business.id}`, {
-        method: "PATCH",
+      const res = await fetch(`/api/businesses/${business.id}/calls`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "ON_MESAJ_GONDERILDI" }),
+        body: JSON.stringify({ outcome, ...extra }),
       });
-      if (!res.ok) throw new Error();
-      setStatus("ON_MESAJ_GONDERILDI");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Kaydedilemedi.");
+      setStatus(data.status);
       setActivities((a) => [
         {
           id: crypto.randomUUID(),
           kind: "SISTEM",
-          message: `Durum: ${STATUS_LABEL[business.status]} → Ön mesaj gönderildi`,
+          message: `Arama: ${CALL_OUTCOME_LABEL[outcome]}${
+            data.status ? ` → ${STATUS_LABEL[data.status]}` : ""
+          }`,
           createdAt: new Date().toISOString(),
         },
         ...a,
       ]);
-    } catch {
-      setErr("Durum güncellenemedi.");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Arama kaydedilemedi.");
     } finally {
       setBusy(false);
+      setCallLossOpen(false);
     }
+  }
+
+  function laterCall() {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    recordOutcome("TEKRAR_ARA", { nextCallAt: d.toISOString() });
   }
 
   return (
@@ -355,62 +446,198 @@ export function FirmaDetay({
         </section>
       )}
 
-      {/* Ön mesaj (nabız yoklama) */}
-      <section className="rounded-lg border p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="flex items-center gap-2 font-semibold">
-            <MessageCircle className="size-4" /> Ön mesaj
-          </h2>
-          <span className="text-muted-foreground text-xs">
-            Sistem üretir, sen gönderirsin.
-          </span>
+      {/* Arama script'i (telefon pivotu) */}
+      <section className="overflow-hidden rounded-xl border">
+        {/* Başlık + birincil eylem: ARA */}
+        <div className="bg-muted/40 flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+          <div>
+            <h2 className="flex items-center gap-2 font-semibold">
+              <Phone className="size-4" /> Arama
+            </h2>
+            <p className="text-muted-foreground text-xs">
+              Firmayı ara, sonra görüşmenin sonucunu işaretle.
+            </p>
+          </div>
+          {business.phone ? (
+            <a
+              href={`tel:${business.phone.replace(/\s/g, "")}`}
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
+            >
+              <Phone className="size-4.5" />
+              <span className="tabular-nums">{business.phone}</span>
+            </a>
+          ) : (
+            <span className="text-muted-foreground rounded-lg border border-dashed px-3 py-2 text-xs">
+              Telefon numarası yok
+            </span>
+          )}
         </div>
 
-        {!message ? (
-          <div className="flex flex-col items-start gap-3">
-            <p className="text-muted-foreground text-sm">
-              Firmanın canlı ve ilgili olup olmadığını ucuza yoklamak için kısa,
-              kişisel bir WhatsApp mesajı üretilir.
-            </p>
-            <Button onClick={() => generate(false)} disabled={busy}>
-              <Sparkles className={`size-4 ${busy ? "animate-pulse" : ""}`} />
-              {busy ? "Üretiliyor…" : "Ön mesaj üret"}
-            </Button>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              rows={4}
-              className="bg-background w-full resize-y rounded-md border p-3 text-sm"
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={copy}>
-                {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-                {copied ? "Kopyalandı" : "Kopyala"}
-              </Button>
-              {waLink ? (
-                <Button onClick={() => window.open(waLink, "_blank")}>
-                  <MessageCircle className="size-4" /> WhatsApp’ta aç
-                </Button>
-              ) : (
-                <span className="text-muted-foreground self-center text-xs">
-                  (telefon yok — wa.me linki üretilemedi)
+        <div className="flex flex-col gap-4 p-4">
+          {/* Arama script'i — opsiyonel yardımcı */}
+          <div className="bg-muted/20 rounded-lg border">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">{"Arama script'i"}</span>
+                <span className="text-muted-foreground bg-muted rounded-full px-1.5 py-0.5 text-[10px] font-medium">
+                  opsiyonel
                 </span>
-              )}
-              <Button variant="ghost" onClick={() => generate(true)} disabled={busy}>
-                <RefreshCw className={`size-4 ${busy ? "animate-spin" : ""}`} /> Yeniden üret
-              </Button>
-              {status !== "ON_MESAJ_GONDERILDI" && (
-                <Button variant="outline" onClick={markSent} disabled={busy}>
-                  <Check className="size-4" /> Gönderildi olarak işaretle
-                </Button>
-              )}
+              </div>
+              <div className="flex items-center gap-1">
+                {message && (
+                  <>
+                    <Button size="xs" variant="ghost" onClick={copy}>
+                      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+                      {copied ? "Kopyalandı" : "Kopyala"}
+                    </Button>
+                    <Button size="xs" variant="ghost" onClick={() => generate(true)} disabled={busy}>
+                      <RefreshCw className={`size-3 ${busy ? "animate-spin" : ""}`} /> Yenile
+                    </Button>
+                    <Button size="xs" variant="ghost" onClick={() => setScriptOpen((o) => !o)}>
+                      {scriptOpen ? "Gizle" : "Göster"}
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
+
+            {!message ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-3">
+                <p className="text-muted-foreground max-w-md text-xs">
+                  Açılış konuşması + olası itirazlara cevap notları. İstersen üret, zorunlu değil.
+                </p>
+                <Button size="sm" variant="outline" onClick={() => generate(false)} disabled={busy}>
+                  <Sparkles className={`size-3.5 ${busy ? "animate-pulse" : ""}`} />
+                  {busy ? "Üretiliyor…" : "Üret"}
+                </Button>
+              </div>
+            ) : (
+              scriptOpen && (
+                <div className="border-t p-3">
+                  <textarea
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    rows={10}
+                    className="bg-background w-full resize-y rounded-md border p-3 text-sm leading-relaxed"
+                  />
+                </div>
+              )
+            )}
           </div>
-        )}
+
+          {/* Görüşme sonucu */}
+          {isCallable && (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Görüşme sonucu</h3>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <OutcomeCard
+                  icon={<Check className="size-4" />}
+                  title="Ulaşıldı — sunum istiyor"
+                  hint="Sunum gönderildi'ye geçer"
+                  accent="emerald"
+                  disabled={busy}
+                  onClick={() => recordOutcome("ULASILDI_KABUL")}
+                />
+                <OutcomeCard
+                  icon={<ThumbsDown className="size-4" />}
+                  title="İlgilenmiyor"
+                  hint="Kayıp olarak kapanır (sebep sorulur)"
+                  accent="red"
+                  disabled={busy}
+                  onClick={() => setCallLossOpen(true)}
+                />
+                <OutcomeCard
+                  icon={<PhoneOff className="size-4" />}
+                  title="Ulaşılamadı"
+                  hint="Tekrar arama görevi açılır"
+                  accent="neutral"
+                  disabled={busy}
+                  onClick={() => recordOutcome("ULASILAMADI")}
+                />
+                <OutcomeCard
+                  icon={<Clock className="size-4" />}
+                  title="Sonra ara"
+                  hint="2 gün sonra kuyruğa geri döner"
+                  accent="neutral"
+                  disabled={busy}
+                  onClick={laterCall}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </section>
+
+      {/* İlgilenmiyor → kayıp sebebi */}
+      <Dialog open={callLossOpen} onOpenChange={setCallLossOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>İlgilenmiyor — kayıp sebebi</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-2">
+            {CALL_LOSS_REASONS.map(([key, label]) => (
+              <Button
+                key={key}
+                variant="outline"
+                onClick={() => recordOutcome("ULASILDI_RET", { lossReason: key })}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Randevu (telefon pivotu) — sunum gönderildikten sonra */}
+      {canSchedule && (
+        <section className="rounded-lg border p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 font-semibold">
+              <CalendarPlus className="size-4" /> Randevu
+            </h2>
+            <span className="text-muted-foreground text-xs">
+              Kaydedince Görev Kutusuna hatırlatma düşer.
+            </span>
+          </div>
+
+          {appointments.length > 0 && (
+            <ul className="mb-3 space-y-1.5">
+              {appointments.map((ap) => (
+                <li key={ap.id} className="flex flex-wrap items-center gap-x-2 text-sm">
+                  <span className="font-medium">
+                    {new Date(ap.scheduledAt).toLocaleString("tr-TR")}
+                  </span>
+                  {ap.location && <span className="text-muted-foreground">· {ap.location}</span>}
+                  {ap.note && <span className="text-muted-foreground w-full text-xs">{ap.note}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input
+              type="datetime-local"
+              value={apt.when}
+              onChange={(e) => setApt((s) => ({ ...s, when: e.target.value }))}
+              className="bg-background h-9 rounded-md border px-2 text-sm"
+            />
+            <Input
+              placeholder="Yer (adres / telefon / video linki)"
+              value={apt.location}
+              onChange={(e) => setApt((s) => ({ ...s, location: e.target.value }))}
+            />
+            <Input
+              placeholder="Not (opsiyonel)"
+              value={apt.note}
+              onChange={(e) => setApt((s) => ({ ...s, note: e.target.value }))}
+              className="sm:col-span-2"
+            />
+          </div>
+          <Button onClick={createAppointment} disabled={aptBusy || !apt.when} className="mt-3">
+            <CalendarPlus className="size-4" /> {aptBusy ? "Kaydediliyor…" : "Randevu ayarla"}
+          </Button>
+        </section>
+      )}
 
       {err && (
         <div className="rounded-md bg-red-600 px-3 py-1.5 text-sm text-white">{err}</div>
@@ -453,5 +680,43 @@ export function FirmaDetay({
         )}
       </section>
     </main>
+  );
+}
+
+// Görüşme sonucu seçeneği: ikon + başlık + ne olacağını söyleyen kısa ipucu.
+const OUTCOME_ACCENT = {
+  emerald:
+    "border-emerald-300 bg-emerald-50/60 text-emerald-900 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100 dark:hover:bg-emerald-950/70",
+  red: "hover:border-red-300 hover:bg-red-50 hover:text-red-800 dark:hover:border-red-900 dark:hover:bg-red-950/40 dark:hover:text-red-100",
+  neutral: "hover:bg-accent",
+} as const;
+
+function OutcomeCard({
+  icon,
+  title,
+  hint,
+  accent,
+  disabled,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  hint: string;
+  accent: keyof typeof OUTCOME_ACCENT;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-colors disabled:pointer-events-none disabled:opacity-50 ${OUTCOME_ACCENT[accent]}`}
+    >
+      <span className="mt-0.5 shrink-0">{icon}</span>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="block text-xs opacity-70">{hint}</span>
+      </span>
+    </button>
   );
 }

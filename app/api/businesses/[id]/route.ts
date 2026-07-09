@@ -27,6 +27,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     stage?: ReturnType<typeof stageForStatus>;
     lossReason?: LossReason | null;
     inWorkList?: boolean;
+    inCallList?: boolean;
     blacklisted?: boolean;
   } = {};
   const activities: string[] = [];
@@ -36,6 +37,11 @@ export async function PATCH(req: Request, { params }: Ctx) {
     activities.push(
       body.inWorkList ? "Çalışma listesine eklendi." : "Çalışma listesinden çıkarıldı.",
     );
+  }
+
+  // "Bugün Aranacaklar" kuyruğu işareti (telefon pivotu) — defter kaydı gürültüsü yaratmaz.
+  if (typeof body.inCallList === "boolean" && body.inCallList !== current.inCallList) {
+    data.inCallList = body.inCallList;
   }
 
   if (typeof body.status === "string") {

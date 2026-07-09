@@ -71,6 +71,8 @@ model Business {
   status         BusinessStatus @default(YENI)
   lossReason     LossReason? // KAYIP ise sebebi (Bölüm 3.2)
   inWorkList     Boolean        @default(false) // "Çalışma Listeme" seçildi mi (Bölüm 3.4)
+  inCallList     Boolean        @default(false) // "Bugün Aranacaklar" kuyruğuna elle işaretlendi mi (telefon pivotu)
+  nextCallAt     DateTime? // tekrar-arama tarihi (son aramadan türetilir; arama kuyruğu filtresi)
   blacklisted    Boolean        @default(false) // kara liste = bir daha gösterme (Bölüm 4.2)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -81,10 +83,13 @@ model Business {
   activities    Activity[]
   tasks         Task[]
   customer      Customer?
+  calls         Call[]
+  appointments  Appointment[]
 
   @@index([searchId])
   @@index([status])
   @@index([stage])
+  @@index([inCallList])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -182,11 +187,50 @@ model Task {
   business     Business?  @relation(fields: [businessId], references: [id], onDelete: Cascade)
   jobId        String?
   job          Job?       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  // Randevu hatırlatması ise bağlı randevu (randevu silinince hatırlatma da gider).
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   createdAt    DateTime   @default(now())
   completedAt  DateTime?
 
   @@index([status, dueAt])
   @@index([businessId])
+  @@index([appointmentId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Telefon teması: arama kaydı + randevu (telefon pivotu)
+// ─────────────────────────────────────────────────────────────
+
+// Bir telefon araması ve sonucu. Huni sayıları dürüst kalsın diye her arama loglanır.
+model Call {
+  id         String      @id @default(cuid())
+  businessId String
+  business   Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  outcome    CallOutcome
+  note       String?
+  calledAt   DateTime    @default(now())
+  nextCallAt DateTime? // TEKRAR_ARA ise ne zaman tekrar aranacak
+  createdAt  DateTime    @default(now())
+
+  @@index([businessId, calledAt])
+}
+
+// Sunumu beğenen firmayla ayarlanan randevu/toplantı (uygulama içi takvim + Görev Kutusu hatırlatması).
+model Appointment {
+  id          String            @id @default(cuid())
+  businessId  String
+  business    Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  scheduledAt DateTime
+  location    String? // adres / "telefon" / video linki
+  note        String?
+  status      AppointmentStatus @default(PLANLANDI)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  tasks       Task[] // hatırlatma görev(ler)i
+
+  @@index([businessId])
+  @@index([scheduledAt])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -278,17 +322,17 @@ enum FunnelStage {
   MUSTERI
 }
 
-// Firma durumları (Bölüm 3.2). status → stage tutarlılığı uygulama katmanında korunur.
+// Firma durumları (telefon pivotu). status → stage tutarlılığı uygulama katmanında korunur.
 enum BusinessStatus {
-  YENI // Aşama 1
-  ON_MESAJ_GONDERILDI
-  ULASILAMADI
-  POTANSIYEL // Aşama 2
-  SUNUM_YAPILDI
-  TEKLIF_YAPILDI
-  KAYIP
+  YENI // Aşama 1 — bulundu, dokunulmadı
+  ARAMAYA_HAZIR // Aşama 1 — analiz+sunum+arama script'i hazır, aranacak
+  ARANDI_ULASILAMADI // Aşama 1 — arandı, ulaşılamadı (park/tekrar)
+  SUNUM_GONDERILDI // Aşama 2 — telefonda kabul, sunum dosyası gönderildi
+  RANDEVU // Aşama 2 — randevu/toplantı ayarlandı
+  TEKLIF_YAPILDI // Aşama 2
+  KAYIP // Aşama 2 — sebebiyle kaydedilir
   IS_DEVAM // Aşama 3
-  IS_BITTI
+  IS_BITTI // Aşama 3
 }
 
 // Kayıp sebepleri (Bölüm 3.2).
@@ -307,9 +351,9 @@ enum AnalysisKind {
   COMPETITOR
 }
 
-// Mesaj türleri (Bölüm 4.7).
+// Mesaj/metin türleri (Bölüm 4.7 + telefon pivotu).
 enum MessageKind {
-  ON_MESAJ
+  ARAMA_SCRIPT // firmaya özel telefon açılış konuşması + itiraz notları
   SUNUM_SONRASI
   TAKIP
   ITIRAZ_CEVABI
@@ -354,6 +398,21 @@ enum JobStatus {
   BASLAMADI
   DEVAM
   BITTI
+}
+
+// Telefon araması sonucu (telefon pivotu).
+enum CallOutcome {
+  ULASILDI_KABUL // ulaşıldı, sunum istiyor → SUNUM_GONDERILDI
+  ULASILDI_RET // ulaşıldı, ilgilenmiyor → KAYIP
+  ULASILAMADI // açmadı / meşgul → ARANDI_ULASILAMADI
+  TEKRAR_ARA // sonra aranacak (nextCallAt)
+}
+
+// Randevu/toplantı durumu (telefon pivotu).
+enum AppointmentStatus {
+  PLANLANDI
+  YAPILDI
+  IPTAL
 }
 
 // Aktivite kaydı türü (Bölüm 4.9).

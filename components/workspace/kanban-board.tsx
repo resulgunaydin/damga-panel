@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ExternalLink,
   MapPin,
+  Phone,
   Plus,
   Search,
   Star,
@@ -22,13 +23,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { classifyWebsite } from "@/lib/website";
+import { CallQueue } from "@/components/workspace/call-queue";
 
 const STATUS_LABEL: Record<string, string> = {
   YENI: "Yeni",
-  ON_MESAJ_GONDERILDI: "Ön mesaj gönderildi",
-  ULASILAMADI: "Ulaşılamadı",
-  POTANSIYEL: "Potansiyel",
-  SUNUM_YAPILDI: "Sunum yapıldı",
+  ARAMAYA_HAZIR: "Aramaya hazır",
+  ARANDI_ULASILAMADI: "Arandı — ulaşılamadı",
+  SUNUM_GONDERILDI: "Sunum gönderildi",
+  RANDEVU: "Randevu ayarlandı",
   TEKLIF_YAPILDI: "Teklif yapıldı",
   KAYIP: "Kayıp",
   IS_DEVAM: "İş devam ediyor",
@@ -43,10 +45,10 @@ const LOSS_LABEL: Record<string, string> = {
 };
 const STAGE_FOR: Record<string, StageKey> = {
   YENI: "ELEME",
-  ON_MESAJ_GONDERILDI: "ELEME",
-  ULASILAMADI: "ELEME",
-  POTANSIYEL: "POTANSIYEL",
-  SUNUM_YAPILDI: "POTANSIYEL",
+  ARAMAYA_HAZIR: "ELEME",
+  ARANDI_ULASILAMADI: "ELEME",
+  SUNUM_GONDERILDI: "POTANSIYEL",
+  RANDEVU: "POTANSIYEL",
   TEKLIF_YAPILDI: "POTANSIYEL",
   KAYIP: "POTANSIYEL",
   IS_DEVAM: "MUSTERI",
@@ -69,7 +71,7 @@ const STAGES: {
     badge: "bg-muted text-muted-foreground",
     dot: "bg-zinc-400",
     ring: "border-l-zinc-300 dark:border-l-zinc-700",
-    statuses: ["YENI", "ON_MESAJ_GONDERILDI", "ULASILAMADI"],
+    statuses: ["YENI", "ARAMAYA_HAZIR", "ARANDI_ULASILAMADI"],
   },
   {
     key: "POTANSIYEL",
@@ -77,7 +79,7 @@ const STAGES: {
     badge: "bg-primary/15 text-primary",
     dot: "bg-primary",
     ring: "border-l-primary/50",
-    statuses: ["POTANSIYEL", "SUNUM_YAPILDI", "TEKLIF_YAPILDI", "KAYIP"],
+    statuses: ["SUNUM_GONDERILDI", "RANDEVU", "TEKLIF_YAPILDI", "KAYIP"],
   },
   {
     key: "MUSTERI",
@@ -100,8 +102,12 @@ type Firm = {
   lossReason: string | null;
   phone: string | null;
   website: string | null;
+  address: string | null;
+  mapsUri: string | null;
   googleRating: number | null;
   googleReviews: number | null;
+  inCallList: boolean;
+  nextCallAt: string | null;
   context: string | null;
   groupKey: string;
   groupLabel: string;
@@ -111,7 +117,14 @@ type Firm = {
   sector: string | null;
 };
 
-type StageTab = "ALL" | StageKey;
+type StageTab = "ALL" | "CALL" | StageKey;
+
+// Bugünkü arama kuyruğu: elle işaretlenmiş (inCallList) ya da tekrar-arama zamanı gelmiş firmalar.
+function isInCallQueue(f: Firm): boolean {
+  if (f.status === "SUNUM_GONDERILDI" || f.status === "RANDEVU" || f.stage !== "ELEME") return false;
+  if (f.inCallList) return true;
+  return f.nextCallAt != null && new Date(f.nextCallAt).getTime() <= Date.now();
+}
 
 export function KanbanBoard({ initial }: { initial: Firm[] }) {
   const [firms, setFirms] = useState<Firm[]>(initial);
@@ -137,11 +150,17 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
     [firms],
   );
 
+  const callFirms = useMemo(
+    () => firms.filter(isInCallQueue).sort((a, b) => b.coarseScore - a.coarseScore),
+    [firms],
+  );
+
   const stageCounts = useMemo(() => {
     const c: Record<string, number> = { ALL: firms.length, ELEME: 0, POTANSIYEL: 0, MUSTERI: 0 };
     for (const f of firms) c[f.stage] = (c[f.stage] ?? 0) + 1;
+    c.CALL = callFirms.length;
     return c;
-  }, [firms]);
+  }, [firms, callFirms]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLocaleLowerCase("tr");
@@ -231,6 +250,32 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
     setErr(m);
     setTimeout(() => setErr(null), 2500);
   }
+
+  // "Bugün Ara" işaretini aç/kapat (arama kuyruğu).
+  async function toggleCallList(id: string, next: boolean) {
+    const prev = firms.find((f) => f.id === id);
+    if (!prev) return;
+    setFirms((fs) => fs.map((f) => (f.id === id ? { ...f, inCallList: next } : f)));
+    try {
+      const res = await fetch(`/api/businesses/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inCallList: next }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setFirms((fs) => fs.map((f) => (f.id === id ? prev : f)));
+      flash(next ? "Aramaya eklenemedi." : "Aramadan çıkarılamadı.");
+    }
+  }
+
+  // Arama sonucu sonrası firma durumunu/kuyruğunu yerelde günceller (CallQueue çağırır).
+  function applyCallResult(
+    id: string,
+    patch: { status: string; stage: string; inCallList: boolean; nextCallAt: string | null },
+  ) {
+    setFirms((fs) => fs.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+  }
   function toggle(set: React.Dispatch<React.SetStateAction<Set<string>>>, key: string) {
     set((s) => {
       const n = new Set(s);
@@ -260,8 +305,9 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
       setFirms((fs) => [
         {
           id: b.id, name: b.name, status: "YENI", stage: "ELEME", coarseScore: 0,
-          lossReason: null, phone: b.phone, website: b.website, googleRating: null,
-          googleReviews: null, context: "manuel", groupKey: "manual",
+          lossReason: null, phone: b.phone, website: b.website, address: null, mapsUri: null,
+          googleRating: null, googleReviews: null, inCallList: false, nextCallAt: null,
+          context: "manuel", groupKey: "manual",
           groupLabel: "Manuel eklenenler", folder: null, city: null, district: null, sector: null,
         },
         ...fs,
@@ -274,6 +320,7 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
 
   const TABS: { key: StageTab; label: string }[] = [
     { key: "ALL", label: "Tümü" },
+    { key: "CALL", label: "📞 Bugün Ara" },
     { key: "ELEME", label: "Eleme" },
     { key: "POTANSIYEL", label: "Potansiyel" },
     { key: "MUSTERI", label: "Gerçek Müşteri" },
@@ -295,7 +342,7 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
       <div className="flex flex-wrap gap-1.5">
         {TABS.map((t) => {
           const active = tab === t.key;
-          const meta = t.key !== "ALL" ? stageMeta(t.key) : null;
+          const meta = t.key === "ALL" || t.key === "CALL" ? null : stageMeta(t.key);
           return (
             <button
               key={t.key}
@@ -312,7 +359,8 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
         })}
       </div>
 
-      {/* Detaylı filtreler */}
+      {/* Detaylı filtreler (arama modunda gizli) */}
+      {tab !== "CALL" && (
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-52 flex-1">
           <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
@@ -340,10 +388,29 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
           <option value="isim">İsme göre</option>
         </select>
       </div>
+      )}
 
       {err && <div className="rounded-md bg-red-600 px-3 py-1.5 text-sm text-white">{err}</div>}
 
-      {filtered.length === 0 ? (
+      {tab === "CALL" ? (
+        <CallQueue
+          firms={callFirms.map((f) => ({
+            id: f.id,
+            name: f.name,
+            status: f.status,
+            coarseScore: f.coarseScore,
+            phone: f.phone,
+            address: f.address,
+            mapsUri: f.mapsUri,
+            googleRating: f.googleRating,
+            googleReviews: f.googleReviews,
+            nextCallAt: f.nextCallAt,
+            context: f.context,
+          }))}
+          onUpdated={applyCallResult}
+          onRemove={(id) => toggleCallList(id, false)}
+        />
+      ) : filtered.length === 0 ? (
         <div className="text-muted-foreground flex min-h-64 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed text-center">
           <p>{firms.length === 0 ? "Listen boş." : "Bu süzgeçle firma yok."}</p>
           {firms.length === 0 && <p className="text-xs">Bir aramada firmalara “Çalışmaya ekle” diyerek başla.</p>}
@@ -389,7 +456,13 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
                           {segOpen && (
                             <div className="divide-y border-t">
                               {seg.firms.slice(0, limit).map((f) => (
-                                <FirmRow key={f.id} f={f} onStatus={changeStatus} onRemove={() => removeFromList(f.id)} />
+                                <FirmRow
+                                  key={f.id}
+                                  f={f}
+                                  onStatus={changeStatus}
+                                  onRemove={() => removeFromList(f.id)}
+                                  onToggleCall={toggleCallList}
+                                />
                               ))}
                               {seg.firms.length > limit && (
                                 <button
@@ -446,9 +519,20 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
   );
 }
 
-function FirmRow({ f, onStatus, onRemove }: { f: Firm; onStatus: (id: string, s: string) => void; onRemove: () => void }) {
+function FirmRow({
+  f,
+  onStatus,
+  onRemove,
+  onToggleCall,
+}: {
+  f: Firm;
+  onStatus: (id: string, s: string) => void;
+  onRemove: () => void;
+  onToggleCall: (id: string, next: boolean) => void;
+}) {
   const meta = stageMeta(f.stage as StageKey);
   const kind = classifyWebsite(f.website);
+  const canCall = f.stage === "ELEME"; // aramaya uygun aşama
   return (
     <div className="hover:bg-accent/40 flex flex-col gap-2 px-3 py-2.5 transition-colors sm:flex-row sm:items-center sm:gap-3 sm:pl-10">
       {/* Skor + isim + meta */}
@@ -478,6 +562,19 @@ function FirmRow({ f, onStatus, onRemove }: { f: Firm; onStatus: (id: string, s:
 
       {/* Aksiyonlar — mobilde ismin altında ayrı satır, masaüstünde satır içinde sağda */}
       <div className="flex shrink-0 items-center gap-2 pl-12 sm:pl-0">
+        {canCall && (
+          <button
+            onClick={() => onToggleCall(f.id, !f.inCallList)}
+            className={`inline-flex shrink-0 items-center rounded-md border p-1.5 ${
+              f.inCallList
+                ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            }`}
+            title={f.inCallList ? "Bugünkü arama listesinden çıkar" : "Bugün Ara listesine ekle"}
+          >
+            <Phone className="size-3.5" />
+          </button>
+        )}
         <Link
           href={`/firma/${f.id}`}
           target="_blank"

@@ -4,11 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  CalendarDays,
   Gauge,
   Layers,
   LayoutGrid,
   ListChecks,
   LogOut,
+  type LucideIcon,
   Moon,
   Package,
   Settings,
@@ -16,10 +18,12 @@ import {
   Sun,
 } from "lucide-react";
 
-const LINKS = [
+type NavLink = { href: string; label: string; icon: LucideIcon; badge?: boolean };
+const LINKS: NavLink[] = [
   { href: "/calisma-alani", label: "Arama Alanı", icon: Layers },
   { href: "/calisma-listem", label: "Çalışma Listem", icon: LayoutGrid },
-  { href: "/gorevler", label: "Görevler", icon: ListChecks },
+  { href: "/randevular", label: "Randevular", icon: CalendarDays },
+  { href: "/gorevler", label: "Görevler", icon: ListChecks, badge: true },
   { href: "/hizmetler", label: "Hizmetler", icon: Package },
   { href: "/kullanim", label: "Kullanım", icon: Gauge },
   { href: "/ayarlar", label: "Ayarlar", icon: Settings },
@@ -73,6 +77,19 @@ function LogoutButton() {
 
 export function AppNav() {
   const pathname = usePathname();
+  const [taskCount, setTaskCount] = useState(0);
+
+  // Bildirim: aktif görev sayısı (randevu hatırlatmaları dahil). Her sayfa geçişinde tazelenir.
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/tasks")
+      .then((r) => (r.ok ? r.json() : { tasks: [] }))
+      .then((d) => alive && setTaskCount(Array.isArray(d.tasks) ? d.tasks.length : 0))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [pathname]);
 
   return (
     <header className="bg-background/80 sticky top-0 z-40 border-b backdrop-blur-md">
@@ -89,20 +106,32 @@ export function AppNav() {
 
         {/* Bağlantılar */}
         <nav className="flex items-center gap-0.5 overflow-x-auto">
-          {LINKS.map(({ href, label, icon: Icon }) => {
+          {LINKS.map(({ href, label, icon: Icon, badge }) => {
             const active = pathname === href || pathname.startsWith(href + "/");
             return (
               <Link
                 key={href}
                 href={href}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors ${
+                className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors ${
                   active
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent"
                 }`}
               >
-                <Icon className="size-4" />
+                <span className="relative">
+                  <Icon className="size-4" />
+                  {badge && taskCount > 0 && (
+                    <span className="bg-primary text-primary-foreground absolute -top-1.5 -right-2 grid min-w-4 place-items-center rounded-full px-1 text-[10px] leading-4 font-semibold tabular-nums sm:hidden">
+                      {taskCount > 99 ? "99+" : taskCount}
+                    </span>
+                  )}
+                </span>
                 <span className="hidden sm:inline">{label}</span>
+                {badge && taskCount > 0 && (
+                  <span className="bg-primary text-primary-foreground hidden min-w-4 place-items-center rounded-full px-1 text-[10px] leading-4 font-semibold tabular-nums sm:grid">
+                    {taskCount > 99 ? "99+" : taskCount}
+                  </span>
+                )}
               </Link>
             );
           })}

@@ -10,10 +10,10 @@ import type {
 
 export const BUSINESS_STATUSES: BusinessStatus[] = [
   "YENI",
-  "ON_MESAJ_GONDERILDI",
-  "ULASILAMADI",
-  "POTANSIYEL",
-  "SUNUM_YAPILDI",
+  "ARAMAYA_HAZIR",
+  "ARANDI_ULASILAMADI",
+  "SUNUM_GONDERILDI",
+  "RANDEVU",
   "TEKLIF_YAPILDI",
   "KAYIP",
   "IS_DEVAM",
@@ -30,10 +30,10 @@ export const LOSS_REASONS: LossReason[] = [
 
 export const STATUS_LABEL: Record<BusinessStatus, string> = {
   YENI: "Yeni",
-  ON_MESAJ_GONDERILDI: "Ön mesaj gönderildi",
-  ULASILAMADI: "Ulaşılamadı",
-  POTANSIYEL: "Potansiyel",
-  SUNUM_YAPILDI: "Sunum yapıldı",
+  ARAMAYA_HAZIR: "Aramaya hazır",
+  ARANDI_ULASILAMADI: "Arandı — ulaşılamadı",
+  SUNUM_GONDERILDI: "Sunum gönderildi",
+  RANDEVU: "Randevu ayarlandı",
   TEKLIF_YAPILDI: "Teklif yapıldı",
   KAYIP: "Kayıp",
   IS_DEVAM: "İş devam ediyor",
@@ -48,11 +48,11 @@ export const LOSS_LABEL: Record<LossReason, string> = {
   ULASILAMADI: "Ulaşılamadı",
 };
 
-// Durumdan huni aşamasını türetir (Bölüm 3.2).
+// Durumdan huni aşamasını türetir (telefon pivotu).
 export function stageForStatus(status: BusinessStatus): FunnelStage {
   switch (status) {
-    case "POTANSIYEL":
-    case "SUNUM_YAPILDI":
+    case "SUNUM_GONDERILDI":
+    case "RANDEVU":
     case "TEKLIF_YAPILDI":
     case "KAYIP":
       return "POTANSIYEL";
@@ -60,6 +60,7 @@ export function stageForStatus(status: BusinessStatus): FunnelStage {
     case "IS_BITTI":
       return "MUSTERI";
     default:
+      // YENI, ARAMAYA_HAZIR, ARANDI_ULASILAMADI
       return "ELEME";
   }
 }
