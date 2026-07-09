@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { classifyWebsite } from "@/lib/website";
+import { isLandlinePhone } from "@/lib/phone";
 
 type Signal = { key: string; label: string; points: number; detected: boolean };
 export type Breakdown = {
@@ -118,7 +119,9 @@ export function SegmentDetail({
   // Filtreler
   const [q, setQ] = useState("");
   const [siteFilter, setSiteFilter] = useState<"hepsi" | "var" | "sosyal" | "yok">("hepsi");
+  const [sabitHaric, setSabitHaric] = useState(false);
   const [sort, setSort] = useState<"skor" | "isim" | "yorum" | "puan">("skor");
+  const [bulkAdding, setBulkAdding] = useState(false);
 
   const neverRun = usage.scanQueries === 0;
   const unscoredAll = businesses.filter((b) => !b.scoreBreakdown);
@@ -131,6 +134,7 @@ export function SegmentDetail({
       if (siteFilter === "var" && kind !== "gercek") return false;
       if (siteFilter === "sosyal" && kind !== "sosyal") return false;
       if (siteFilter === "yok" && (kind === "gercek" || kind === "sosyal")) return false;
+      if (sabitHaric && isLandlinePhone(b.phone)) return false;
       if (needle) {
         const hay = `${b.name} ${b.address ?? ""}`.toLocaleLowerCase("tr");
         if (!hay.includes(needle)) return false;
@@ -144,9 +148,10 @@ export function SegmentDetail({
       puan: (a, b) => (b.googleRating ?? 0) - (a.googleRating ?? 0),
     };
     return [...list].sort(cmp[sort]);
-  }, [businesses, q, siteFilter, sort]);
+  }, [businesses, q, siteFilter, sabitHaric, sort]);
 
   const unscored = filtered.filter((b) => !b.scoreBreakdown);
+  const addable = useMemo(() => filtered.filter((b) => !b.inWorkList), [filtered]);
 
   async function refresh() {
     const res = await fetch(`/api/searches/${search.id}/businesses`);
@@ -195,6 +200,30 @@ export function SegmentDetail({
         bs.map((b) => (b.id === id ? { ...b, inWorkList: !next } : b)),
       );
       setMsg("Çalışma listesi güncellenemedi.");
+    }
+  }
+
+  async function bulkAdd() {
+    const ids = addable.map((b) => b.id);
+    if (ids.length === 0) return;
+    setBulkAdding(true);
+    setMsg(null);
+    const idSet = new Set(ids);
+    setBusinesses((bs) => bs.map((b) => (idSet.has(b.id) ? { ...b, inWorkList: true } : b)));
+    try {
+      const res = await fetch("/api/businesses/bulk", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, inWorkList: true }),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setMsg(`${data.updated} firma çalışma listesine eklendi.`);
+    } catch {
+      setBusinesses((bs) => bs.map((b) => (idSet.has(b.id) ? { ...b, inWorkList: false } : b)));
+      setMsg("Toplu ekleme başarısız oldu.");
+    } finally {
+      setBulkAdding(false);
     }
   }
 
@@ -331,6 +360,15 @@ export function SegmentDetail({
                   {label}
                 </button>
               ))}
+              <button
+                onClick={() => setSabitHaric((v) => !v)}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                  sabitHaric ? "border-primary/40 bg-primary/10 text-primary" : "hover:bg-accent"
+                }`}
+                title="0850, 0332 gibi sabit hat numaralarını hariç tut"
+              >
+                Sabit hat hariç
+              </button>
             </div>
             <select
               value={sort}
@@ -342,6 +380,16 @@ export function SegmentDetail({
               <option value="puan">Puana göre</option>
               <option value="isim">İsme göre</option>
             </select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={bulkAdd}
+              disabled={bulkAdding || addable.length === 0}
+              title="Şu an görünen (filtrelenmiş) firmaların hepsini çalışma listesine ekle"
+            >
+              <Plus className="size-4" />
+              {bulkAdding ? "Ekleniyor…" : `Filtrelenenleri Çalışmaya Ekle (${addable.length})`}
+            </Button>
           </div>
 
           <p className="text-muted-foreground text-sm">

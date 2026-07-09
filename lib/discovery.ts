@@ -63,6 +63,7 @@ async function saveBusiness(
   searchId: string,
   p: PlaceResult,
 ): Promise<boolean> {
+  if (!p.phone) return false; // numarası yoksa ulaşacak alan yok → hiç kaydetme
   const existing = await prisma.business.findUnique({ where: { placeId: p.id } });
   if (existing) return false; // zaten listede / geçmişte → dedup (kara liste dahil)
   await prisma.business.create({
