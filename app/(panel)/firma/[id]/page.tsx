@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { opportunitiesFromSignals } from "@/lib/opportunity";
 import { hasRealWebsite } from "@/lib/website";
+import { stageForStatus } from "@/lib/business";
 import type { Signal } from "@/lib/scoring";
 import { FirmaDetay } from "@/components/firma/firma-detay";
 
@@ -58,6 +59,7 @@ export default async function FirmaPage({
         phone: business.phone,
         website: business.website,
         address: business.address,
+        mapsUri: (business.social as { googleMapsUri?: string } | null)?.googleMapsUri ?? null,
         status: business.status,
         blacklisted: business.blacklisted,
         coarseScore: business.coarseScore,
@@ -67,6 +69,7 @@ export default async function FirmaPage({
           ? `${business.search.city}${business.search.district ? " · " + business.search.district : ""} · ${business.search.sector}`
           : null,
       }}
+      isEleme={stageForStatus(business.status) === "ELEME"}
       initialMessage={business.messages[0]?.content ?? null}
       activities={business.activities.map((a) => ({
         id: a.id,

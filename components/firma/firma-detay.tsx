@@ -8,6 +8,7 @@ import {
   Check,
   Copy,
   Globe,
+  MapPin,
   MessageCircle,
   Package,
   Phone,
@@ -40,6 +41,7 @@ type Business = {
   phone: string | null;
   website: string | null;
   address: string | null;
+  mapsUri: string | null;
   status: string;
   blacklisted: boolean;
   coarseScore: number;
@@ -71,6 +73,7 @@ export function FirmaDetay({
   hasPlaceId,
   hasSearch,
   hasWebsite,
+  isEleme,
   analyses,
 }: {
   business: Business;
@@ -82,6 +85,7 @@ export function FirmaDetay({
   hasPlaceId: boolean;
   hasSearch: boolean;
   hasWebsite: boolean;
+  isEleme: boolean;
   analyses: AnalysisRecord[];
 }) {
   const [status, setStatus] = useState(business.status);
@@ -271,6 +275,17 @@ export function FirmaDetay({
                   {business.googleRating.toFixed(1)} ({business.googleReviews ?? 0})
                 </span>
               )}
+              <a
+                href={
+                  business.mapsUri ??
+                  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${business.name} ${business.address ?? ""}`)}`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-primary inline-flex items-center gap-1 hover:underline"
+              >
+                <MapPin className="size-3.5" /> Haritada aç
+              </a>
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
@@ -402,13 +417,19 @@ export function FirmaDetay({
               <Button variant="ghost" onClick={() => generate(true)} disabled={busy}>
                 <RefreshCw className={`size-4 ${busy ? "animate-spin" : ""}`} /> Yeniden üret
               </Button>
-              {status !== "ON_MESAJ_GONDERILDI" && (
-                <Button variant="outline" onClick={markSent} disabled={busy}>
-                  <Check className="size-4" /> Gönderildi olarak işaretle
-                </Button>
-              )}
             </div>
           </div>
+        )}
+
+        {isEleme && status !== "ON_MESAJ_GONDERILDI" && (
+          <Button
+            onClick={markSent}
+            disabled={busy}
+            size="lg"
+            className="mt-4 w-full justify-center text-base"
+          >
+            <Check className="size-5" /> Ön mesaj gönderildi olarak işaretle
+          </Button>
         )}
       </section>
 

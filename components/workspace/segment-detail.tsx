@@ -15,10 +15,26 @@ import {
   Search,
   Star,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { classifyWebsite } from "@/lib/website";
 import { isLandlinePhone } from "@/lib/phone";
+
+// URL'den okunabilir site adını çıkarır (ör. "www.ornek.com.tr" → "ornek.com.tr").
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
 
 type Signal = { key: string; label: string; points: number; detected: boolean };
 export type Breakdown = {
@@ -122,6 +138,7 @@ export function SegmentDetail({
   const [sabitHaric, setSabitHaric] = useState(false);
   const [sort, setSort] = useState<"skor" | "isim" | "yorum" | "puan">("skor");
   const [bulkAdding, setBulkAdding] = useState(false);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
 
   const neverRun = usage.scanQueries === 0;
   const unscoredAll = businesses.filter((b) => !b.scoreBreakdown);
@@ -219,6 +236,7 @@ export function SegmentDetail({
       if (!res.ok) throw new Error();
       const data = await res.json();
       setMsg(`${data.updated} firma çalışma listesine eklendi.`);
+      setBulkConfirmOpen(false);
     } catch {
       setBusinesses((bs) => bs.map((b) => (idSet.has(b.id) ? { ...b, inWorkList: false } : b)));
       setMsg("Toplu ekleme başarısız oldu.");
@@ -226,6 +244,15 @@ export function SegmentDetail({
       setBulkAdding(false);
     }
   }
+
+  const activeFilterLabels: string[] = [];
+  if (siteFilter !== "hepsi") {
+    activeFilterLabels.push(
+      { var: "Site var", sosyal: "Sosyal medya", yok: "Site yok" }[siteFilter],
+    );
+  }
+  if (sabitHaric) activeFilterLabels.push("Sabit hat hariç");
+  if (q.trim()) activeFilterLabels.push(`Arama: "${q.trim()}"`);
 
   async function score(force = false) {
     setScoring(true);
@@ -383,12 +410,12 @@ export function SegmentDetail({
             <Button
               variant="outline"
               size="sm"
-              onClick={bulkAdd}
-              disabled={bulkAdding || addable.length === 0}
+              onClick={() => setBulkConfirmOpen(true)}
+              disabled={addable.length === 0}
               title="Şu an görünen (filtrelenmiş) firmaların hepsini çalışma listesine ekle"
             >
               <Plus className="size-4" />
-              {bulkAdding ? "Ekleniyor…" : `Filtrelenenleri Çalışmaya Ekle (${addable.length})`}
+              Filtrelenenleri Çalışmaya Ekle ({addable.length})
             </Button>
           </div>
 
@@ -447,6 +474,45 @@ export function SegmentDetail({
           )}
         </div>
       )}
+
+      {/* Toplu ekleme onayı */}
+      <Dialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Filtrelenenleri çalışmaya ekle</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 text-sm">
+            <p>
+              <b className="text-foreground text-lg">{addable.length}</b> firma çalışma
+              listesine eklenecek.
+            </p>
+            {activeFilterLabels.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {activeFilterLabels.map((l) => (
+                  <span
+                    key={l}
+                    className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs"
+                  >
+                    {l}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-xs">
+                Aktif filtre yok — listedeki tüm firmalar eklenecek.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setBulkConfirmOpen(false)} disabled={bulkAdding}>
+              Vazgeç
+            </Button>
+            <Button onClick={bulkAdd} disabled={bulkAdding || addable.length === 0}>
+              {bulkAdding ? "Ekleniyor…" : "Onayla ve ekle"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
@@ -500,9 +566,11 @@ function FirmRow({
                   href={b.website!}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                  className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
+                  title={b.website!}
                 >
-                  <Globe className="size-3" /> site <ExternalLink className="size-3" />
+                  <Globe className="size-3.5" /> {hostnameOf(b.website!)}{" "}
+                  <ExternalLink className="size-3" />
                 </a>
               );
             if (kind === "sosyal")
@@ -511,7 +579,7 @@ function FirmRow({
                   href={b.website!}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-medium text-fuchsia-600 hover:underline dark:text-fuchsia-400"
+                  className="inline-flex items-center gap-1 text-sm font-medium text-fuchsia-600 hover:underline dark:text-fuchsia-400"
                   title="Sadece sosyal medya — gerçek sitesi yok"
                 >
                   sosyal medya <ExternalLink className="size-3" />
@@ -520,8 +588,8 @@ function FirmRow({
             return <span className="text-xs font-medium text-orange-600">site yok</span>;
           })()}
           {b.phone && (
-            <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
-              <Phone className="size-3" /> {b.phone}
+            <span className="text-foreground inline-flex items-center gap-1 text-sm font-semibold">
+              <Phone className="size-3.5" /> {b.phone}
             </span>
           )}
         </div>

@@ -16,6 +16,8 @@ export default async function CalismaListemPage() {
       lossReason: true,
       phone: true,
       website: true,
+      address: true,
+      social: true,
       googleRating: true,
       googleReviews: true,
       searchId: true,
@@ -42,6 +44,8 @@ export default async function CalismaListemPage() {
         lossReason: b.lossReason,
         phone: b.phone,
         website: b.website,
+        address: b.address,
+        mapsUri: (b.social as { googleMapsUri?: string } | null)?.googleMapsUri ?? null,
         googleRating: b.googleRating,
         googleReviews: b.googleReviews,
         context: b.search
