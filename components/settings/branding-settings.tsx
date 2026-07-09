@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, ImageUp, Loader2, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SettingsTabs } from "@/components/settings/settings-tabs";
 
 type Branding = {
   logoUrl?: string | null;
@@ -77,7 +78,16 @@ export function BrandingSettings({ initial, themes }: { initial: Branding; theme
         >
           <ArrowLeft className="size-4" /> Ayarlar
         </Link>
-        <h1 className="text-2xl font-semibold">Sunum Markası &amp; Temalar</h1>
+        <h1 className="text-2xl font-semibold">Ayarlar</h1>
+        <p className="text-muted-foreground text-sm">
+          AI sağlayıcı, sorgu sınırları ve sunum markası tek yerden yönetilir.
+        </p>
+      </div>
+
+      <SettingsTabs />
+
+      <div>
+        <h2 className="text-lg font-semibold">Sunum Markası &amp; Temalar</h2>
         <p className="text-muted-foreground text-sm">
           Logonuz ve iletişim bilgileriniz her sunuma yansır. Bir varsayılan tema seçin.
         </p>

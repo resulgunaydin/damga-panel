@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Check, KeyRound, Plus, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SettingsTabs } from "@/components/settings/settings-tabs";
 
 type Models = Record<"anthropic" | "gemini", Record<"simple" | "complex", string>>;
 type Provider = "anthropic" | "gemini";
@@ -107,8 +108,17 @@ export function AiSettings({
           <ArrowLeft className="size-4" /> Arama Alanı
         </Link>
         <h1 className="font-heading flex items-center gap-2 text-2xl font-bold">
-          <Sparkles className="size-6" /> AI Sağlayıcı
+          <Sparkles className="size-6" /> Ayarlar
         </h1>
+        <p className="text-muted-foreground text-sm">
+          AI sağlayıcı, sorgu sınırları ve sunum markası tek yerden yönetilir.
+        </p>
+      </div>
+
+      <SettingsTabs />
+
+      <div>
+        <h2 className="font-heading text-lg font-bold">AI Sağlayıcı</h2>
         <p className="text-muted-foreground text-sm">Mesaj ve analiz üretiminde kullanılacak sağlayıcı ve anahtarlar.</p>
       </div>
 
