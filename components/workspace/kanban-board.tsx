@@ -3,13 +3,16 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  CheckSquare,
   ChevronDown,
   ChevronRight,
   ExternalLink,
   MapPin,
+  MessageCircle,
   Phone,
   Plus,
   Search,
+  Square,
   Star,
   X,
 } from "lucide-react";
@@ -140,6 +143,8 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
   const [loss, setLoss] = useState<{ open: boolean; firmId: string | null }>({ open: false, firmId: null });
   const [err, setErr] = useState<string | null>(null);
   const [manual, setManual] = useState({ open: false, name: "", phone: "", website: "", error: "" });
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkRemoving, setBulkRemoving] = useState(false);
 
   const sektorler = useMemo(
     () => [...new Set(firms.map((f) => f.sector).filter(Boolean))].sort((a, b) => a!.localeCompare(b!, "tr")) as string[],
@@ -275,6 +280,52 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
     patch: { status: string; stage: string; inCallList: boolean; nextCallAt: string | null },
   ) {
     setFirms((fs) => fs.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+  }
+
+  function toggleSelect(id: string) {
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+  function toggleSelectAllSeg(segFirms: Firm[]) {
+    const ids = segFirms.map((f) => f.id);
+    const allSelected = ids.every((id) => selected.has(id));
+    setSelected((s) => {
+      const n = new Set(s);
+      if (allSelected) ids.forEach((id) => n.delete(id));
+      else ids.forEach((id) => n.add(id));
+      return n;
+    });
+  }
+  async function bulkRemoveSeg(segFirms: Firm[]) {
+    const ids = segFirms.filter((f) => selected.has(f.id)).map((f) => f.id);
+    if (ids.length === 0) return;
+    if (!confirm(`${ids.length} firma çalışma listesinden çıkarılsın mı?`)) return;
+    setBulkRemoving(true);
+    const idSet = new Set(ids);
+    const prev = firms;
+    setFirms((fs) => fs.filter((f) => !idSet.has(f.id)));
+    setSelected((s) => {
+      const n = new Set(s);
+      ids.forEach((id) => n.delete(id));
+      return n;
+    });
+    try {
+      const res = await fetch("/api/businesses/bulk", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, inWorkList: false }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setFirms(prev);
+      flash("Toplu çıkarma başarısız oldu.");
+    } finally {
+      setBulkRemoving(false);
+    }
   }
   function toggle(set: React.Dispatch<React.SetStateAction<Set<string>>>, key: string) {
     set((s) => {
@@ -440,18 +491,38 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
                       const segId = `${stage.key}:${seg.key}`;
                       const segOpen = openSeg.has(segId);
                       const limit = shown[segId] ?? PAGE;
+                      const segSelectedCount = seg.firms.filter((f) => selected.has(f.id)).length;
+                      const segAllSelected = seg.firms.length > 0 && segSelectedCount === seg.firms.length;
                       return (
                         <div key={segId}>
                           {/* Segment alt-başlığı */}
-                          <button
-                            onClick={() => toggle(setOpenSeg, segId)}
-                            className="hover:bg-accent/40 flex w-full items-center gap-2 px-4 py-2 text-left"
-                          >
-                            {segOpen ? <ChevronDown className="text-muted-foreground size-3.5" /> : <ChevronRight className="text-muted-foreground size-3.5" />}
-                            <MapPin className="text-muted-foreground size-3.5" />
-                            <span className="truncate text-sm font-medium">{seg.label}</span>
-                            <span className="bg-muted text-muted-foreground rounded-full px-1.5 text-xs tabular-nums">{seg.firms.length}</span>
-                          </button>
+                          <div className="hover:bg-accent/40 flex w-full items-center gap-2 px-4 py-2 text-left">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleSelectAllSeg(seg.firms); }}
+                              className="text-muted-foreground hover:text-foreground shrink-0"
+                              title={segAllSelected ? "Bu grubun seçimini kaldır" : "Bu grubun tümünü seç"}
+                            >
+                              {segAllSelected ? <CheckSquare className="size-4" /> : <Square className="size-4" />}
+                            </button>
+                            <button
+                              onClick={() => toggle(setOpenSeg, segId)}
+                              className="flex min-w-0 flex-1 items-center gap-2"
+                            >
+                              {segOpen ? <ChevronDown className="text-muted-foreground size-3.5" /> : <ChevronRight className="text-muted-foreground size-3.5" />}
+                              <MapPin className="text-muted-foreground size-3.5 shrink-0" />
+                              <span className="truncate text-sm font-medium">{seg.label}</span>
+                              <span className="bg-muted text-muted-foreground rounded-full px-1.5 text-xs tabular-nums">{seg.firms.length}</span>
+                            </button>
+                            {segSelectedCount > 0 && (
+                              <button
+                                onClick={() => bulkRemoveSeg(seg.firms)}
+                                disabled={bulkRemoving}
+                                className="shrink-0 rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+                              >
+                                {segSelectedCount} seçileni listeden çıkar
+                              </button>
+                            )}
+                          </div>
 
                           {segOpen && (
                             <div className="divide-y border-t">
@@ -459,6 +530,8 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
                                 <FirmRow
                                   key={f.id}
                                   f={f}
+                                  selected={selected.has(f.id)}
+                                  onToggleSelect={() => toggleSelect(f.id)}
                                   onStatus={changeStatus}
                                   onRemove={() => removeFromList(f.id)}
                                   onToggleCall={toggleCallList}
@@ -519,13 +592,26 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
   );
 }
 
+function waNumber(phone: string | null): string | null {
+  if (!phone) return null;
+  const d = phone.replace(/\D/g, "");
+  if (d.startsWith("90")) return d;
+  if (d.startsWith("0")) return "90" + d.slice(1);
+  if (d.length === 10) return "90" + d;
+  return d;
+}
+
 function FirmRow({
   f,
+  selected,
+  onToggleSelect,
   onStatus,
   onRemove,
   onToggleCall,
 }: {
   f: Firm;
+  selected: boolean;
+  onToggleSelect: () => void;
   onStatus: (id: string, s: string) => void;
   onRemove: () => void;
   onToggleCall: (id: string, next: boolean) => void;
@@ -533,10 +619,21 @@ function FirmRow({
   const meta = stageMeta(f.stage as StageKey);
   const kind = classifyWebsite(f.website);
   const canCall = f.stage === "ELEME"; // aramaya uygun aşama
+  const wa = waNumber(f.phone);
+  const mapsHref =
+    f.mapsUri ??
+    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${f.name} ${f.address ?? ""}`)}`;
   return (
     <div className="hover:bg-accent/40 flex flex-col gap-2 px-3 py-2.5 transition-colors sm:flex-row sm:items-center sm:gap-3 sm:pl-10">
       {/* Skor + isim + meta */}
       <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
+        <button
+          onClick={onToggleSelect}
+          className="text-muted-foreground hover:text-foreground shrink-0"
+          title={selected ? "Seçimi kaldır" : "Seç"}
+        >
+          {selected ? <CheckSquare className="size-4" /> : <Square className="size-4" />}
+        </button>
         <span className={`grid size-9 shrink-0 place-items-center rounded-lg text-sm font-bold tabular-nums ${meta.badge}`} title="Fırsat skoru">
           {f.coarseScore}
         </span>
@@ -549,7 +646,7 @@ function FirmRow({
                 {f.googleRating.toFixed(1)}{f.googleReviews != null && ` (${f.googleReviews})`}
               </span>
             )}
-            {f.phone && <span>{f.phone}</span>}
+            {f.phone && <span className="text-foreground font-medium">{f.phone}</span>}
             {kind === "sosyal" ? (
               <span className="text-fuchsia-600 dark:text-fuchsia-400">sosyal medya</span>
             ) : kind !== "gercek" ? (
@@ -574,6 +671,26 @@ function FirmRow({
           >
             <Phone className="size-3.5" />
           </button>
+        )}
+        <a
+          href={mapsHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex shrink-0 items-center rounded-md border p-1.5"
+          title="Google Haritalar'da aç"
+        >
+          <MapPin className="size-3.5" />
+        </a>
+        {wa && (
+          <a
+            href={`https://wa.me/${wa}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex shrink-0 items-center rounded-md border p-1.5"
+            title="WhatsApp'ta aç"
+          >
+            <MessageCircle className="size-3.5" />
+          </a>
         )}
         <Link
           href={`/firma/${f.id}`}

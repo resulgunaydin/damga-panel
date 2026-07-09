@@ -10,6 +10,7 @@ import {
   Clock,
   Copy,
   Globe,
+  MapPin,
   Package,
   Phone,
   PhoneOff,
@@ -64,6 +65,7 @@ type Business = {
   phone: string | null;
   website: string | null;
   address: string | null;
+  mapsUri: string | null;
   status: string;
   blacklisted: boolean;
   coarseScore: number;
@@ -362,6 +364,17 @@ export function FirmaDetay({
                   {business.googleRating.toFixed(1)} ({business.googleReviews ?? 0})
                 </span>
               )}
+              <a
+                href={
+                  business.mapsUri ??
+                  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${business.name} ${business.address ?? ""}`)}`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-primary inline-flex items-center gap-1 hover:underline"
+              >
+                <MapPin className="size-3.5" /> Haritada aç
+              </a>
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">

@@ -59,6 +59,7 @@ export default async function FirmaPage({
         phone: business.phone,
         website: business.website,
         address: business.address,
+        mapsUri: (business.social as { googleMapsUri?: string } | null)?.googleMapsUri ?? null,
         status: business.status,
         blacklisted: business.blacklisted,
         coarseScore: business.coarseScore,

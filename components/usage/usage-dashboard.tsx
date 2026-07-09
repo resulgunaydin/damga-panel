@@ -1,10 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Gauge } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ArrowLeft, Gauge, Settings } from "lucide-react";
 
 type Summary = {
   caps: { dailyCap: number; perScanCap: number };
@@ -27,35 +24,9 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 export function UsageDashboard({ initial }: { initial: Summary }) {
-  const [data, setData] = useState<Summary>(initial);
-  const [daily, setDaily] = useState(String(initial.caps.dailyCap));
-  const [perScan, setPerScan] = useState(String(initial.caps.perScanCap));
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-
+  const data = initial;
   const dailyPct = Math.min(100, Math.round((data.todayTotal / data.caps.dailyCap) * 100));
   const dailyLeft = Math.max(0, data.caps.dailyCap - data.todayTotal);
-
-  async function saveCaps() {
-    setSaving(true);
-    setMsg(null);
-    try {
-      const res = await fetch("/api/usage/caps", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dailyCap: Number(daily), perScanCap: Number(perScan) }),
-      });
-      const c = await res.json();
-      if (!res.ok) throw new Error(c.error ?? "Kaydedilemedi");
-      setData((d) => ({ ...d, caps: c }));
-      setMsg("Tavanlar güncellendi.");
-    } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Hata");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   const kinds = Object.keys(KIND_LABELS);
 
   return (
@@ -128,40 +99,20 @@ export function UsageDashboard({ initial }: { initial: Summary }) {
         </table>
       </div>
 
-      {/* Tavan ayarları */}
+      {/* Tavan bilgisi — düzenleme Ayarlar'da */}
       <div className="rounded-lg border p-4">
         <h2 className="font-semibold">Sorgu tavanları</h2>
         <p className="text-muted-foreground text-sm">
-          Tavan dolunca keşif/analiz durur ve sana sorar (Bölüm 4.2).
+          Günlük: <b className="text-foreground">{data.caps.dailyCap}</b> · Tarama başına:{" "}
+          <b className="text-foreground">{data.caps.perScanCap}</b>. Tavan dolunca keşif/analiz
+          durur ve sana sorar (Bölüm 4.2).
         </p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">
-            Günlük tavan
-            <Input
-              type="number"
-              min={1}
-              value={daily}
-              onChange={(e) => setDaily(e.target.value)}
-              className="mt-1"
-            />
-          </label>
-          <label className="text-sm">
-            Tarama başına tavan
-            <Input
-              type="number"
-              min={1}
-              value={perScan}
-              onChange={(e) => setPerScan(e.target.value)}
-              className="mt-1"
-            />
-          </label>
-        </div>
-        <div className="mt-3 flex items-center gap-3">
-          <Button onClick={saveCaps} disabled={saving}>
-            {saving ? "Kaydediliyor…" : "Kaydet"}
-          </Button>
-          {msg && <span className="text-muted-foreground text-sm">{msg}</span>}
-        </div>
+        <Link
+          href="/ayarlar/limitler"
+          className="text-primary mt-2 inline-flex items-center gap-1 text-sm hover:underline"
+        >
+          <Settings className="size-3.5" /> Tavanları değiştir (Ayarlar)
+        </Link>
       </div>
     </main>
   );
