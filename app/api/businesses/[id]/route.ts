@@ -78,3 +78,16 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
   return NextResponse.json(business);
 }
+
+// Firmayı KALICI (hard) siler. Kara liste (soft delete) firmayı saklayıp dedup'ta
+// tuttuğu için tekrar taramada gelmez; kalıcı silme kaydı tümden kaldırır → aynı firma
+// sonraki taramada yeniden çekilebilir. İlişkili kayıtlar şemada onDelete: Cascade.
+export async function DELETE(_req: Request, { params }: Ctx) {
+  const { id } = await params;
+  const existing = await prisma.business.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) {
+    return NextResponse.json({ error: "Firma bulunamadı." }, { status: 404 });
+  }
+  await prisma.business.delete({ where: { id } });
+  return NextResponse.json({ ok: true });
+}

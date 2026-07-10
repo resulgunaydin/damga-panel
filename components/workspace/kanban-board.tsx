@@ -11,6 +11,7 @@ import {
   Plus,
   Search,
   Star,
+  Trash2,
   X,
 } from "lucide-react";
 import {
@@ -136,6 +137,7 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
   const [sort, setSort] = useState<"skor" | "isim" | "yorum">("skor");
   const [openStage, setOpenStage] = useState<Set<string>>(new Set());
   const [openSeg, setOpenSeg] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [shown, setShown] = useState<Record<string, number>>({});
   const [loss, setLoss] = useState<{ open: boolean; firmId: string | null }>({ open: false, firmId: null });
   const [err, setErr] = useState<string | null>(null);
@@ -249,6 +251,53 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
   function flash(m: string) {
     setErr(m);
     setTimeout(() => setErr(null), 2500);
+  }
+
+  // Toplu seçim (bölüm bazlı kalıcı silme için).
+  function toggleSelect(id: string, next: boolean) {
+    setSelected((s) => {
+      const n = new Set(s);
+      if (next) n.add(id);
+      else n.delete(id);
+      return n;
+    });
+  }
+  function setSelectMany(ids: string[], next: boolean) {
+    setSelected((s) => {
+      const n = new Set(s);
+      for (const id of ids) {
+        if (next) n.add(id);
+        else n.delete(id);
+      }
+      return n;
+    });
+  }
+
+  // KALICI (hard) silme — kayıtları tümden kaldırır (kara listeden farklı, geri alınamaz).
+  async function bulkDelete(ids: string[]) {
+    if (ids.length === 0) return;
+    if (
+      !confirm(
+        `${ids.length} firma KALICI olarak silinecek. Tüm arama/randevu/analiz kayıtları da gider ve bu işlem geri alınamaz. Devam edilsin mi?`,
+      )
+    )
+      return;
+    const prev = firms;
+    const idSet = new Set(ids);
+    setFirms((fs) => fs.filter((f) => !idSet.has(f.id)));
+    setSelectMany(ids, false);
+    try {
+      const res = await fetch("/api/businesses/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, action: "delete" }),
+      });
+      if (!res.ok) throw new Error();
+      flash(`${ids.length} firma kalıcı olarak silindi.`);
+    } catch {
+      setFirms(prev);
+      flash("Silme başarısız.");
+    }
   }
 
   // "Bugün Ara" işaretini aç/kapat (arama kuyruğu).
@@ -440,6 +489,9 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
                       const segId = `${stage.key}:${seg.key}`;
                       const segOpen = openSeg.has(segId);
                       const limit = shown[segId] ?? PAGE;
+                      const selectedInSeg = seg.firms.filter((f) => selected.has(f.id));
+                      const allSelectedInSeg =
+                        seg.firms.length > 0 && selectedInSeg.length === seg.firms.length;
                       return (
                         <div key={segId}>
                           {/* Segment alt-başlığı */}
@@ -455,10 +507,47 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
 
                           {segOpen && (
                             <div className="divide-y border-t">
+                              {/* Bölüm bazlı toplu seçim + KALICI silme alanı */}
+                              <div className="bg-muted/30 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-xs sm:pl-10">
+                                <label className="text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1.5">
+                                  <input
+                                    type="checkbox"
+                                    className="size-3.5 accent-red-600"
+                                    checked={allSelectedInSeg}
+                                    onChange={(e) =>
+                                      setSelectMany(seg.firms.map((f) => f.id), e.target.checked)
+                                    }
+                                  />
+                                  Tümünü seç
+                                </label>
+                                {selectedInSeg.length > 0 && (
+                                  <>
+                                    <span className="text-muted-foreground tabular-nums">
+                                      {selectedInSeg.length} seçili
+                                    </span>
+                                    <button
+                                      onClick={() => bulkDelete(selectedInSeg.map((f) => f.id))}
+                                      className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2 py-1 font-medium text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+                                    >
+                                      <Trash2 className="size-3.5" /> Kalıcı sil
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        setSelectMany(seg.firms.map((f) => f.id), false)
+                                      }
+                                      className="text-muted-foreground hover:text-foreground"
+                                    >
+                                      Seçimi temizle
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                               {seg.firms.slice(0, limit).map((f) => (
                                 <FirmRow
                                   key={f.id}
                                   f={f}
+                                  selected={selected.has(f.id)}
+                                  onSelect={toggleSelect}
                                   onStatus={changeStatus}
                                   onRemove={() => removeFromList(f.id)}
                                   onToggleCall={toggleCallList}
@@ -521,11 +610,15 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
 
 function FirmRow({
   f,
+  selected,
+  onSelect,
   onStatus,
   onRemove,
   onToggleCall,
 }: {
   f: Firm;
+  selected: boolean;
+  onSelect: (id: string, next: boolean) => void;
   onStatus: (id: string, s: string) => void;
   onRemove: () => void;
   onToggleCall: (id: string, next: boolean) => void;
@@ -534,9 +627,20 @@ function FirmRow({
   const kind = classifyWebsite(f.website);
   const canCall = f.stage === "ELEME"; // aramaya uygun aşama
   return (
-    <div className="hover:bg-accent/40 flex flex-col gap-2 px-3 py-2.5 transition-colors sm:flex-row sm:items-center sm:gap-3 sm:pl-10">
+    <div
+      className={`flex flex-col gap-2 px-3 py-2.5 transition-colors sm:flex-row sm:items-center sm:gap-3 sm:pl-4 ${
+        selected ? "bg-red-50/60 dark:bg-red-950/20" : "hover:bg-accent/40"
+      }`}
+    >
       {/* Skor + isim + meta */}
       <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
+        <input
+          type="checkbox"
+          className="mt-2.5 size-3.5 shrink-0 accent-red-600 sm:mt-0"
+          checked={selected}
+          onChange={(e) => onSelect(f.id, e.target.checked)}
+          title="Toplu silme için seç"
+        />
         <span className={`grid size-9 shrink-0 place-items-center rounded-lg text-sm font-bold tabular-nums ${meta.badge}`} title="Fırsat skoru">
           {f.coarseScore}
         </span>

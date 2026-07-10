@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Ban,
@@ -18,6 +19,7 @@ import {
   Sparkles,
   Star,
   ThumbsDown,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,6 +109,7 @@ export function FirmaDetay({
   hasWebsite: boolean;
   analyses: AnalysisRecord[];
 }) {
+  const router = useRouter();
   const [status, setStatus] = useState(business.status);
   const [message, setMessage] = useState<string | null>(initialMessage);
   const [activities, setActivities] = useState<Activity[]>(initialActivities);
@@ -125,9 +128,26 @@ export function FirmaDetay({
   // Aramaya uygun (eleme) aşamasındaki durumlar — arama sonucu butonları burada gösterilir.
   const isCallable =
     status === "YENI" || status === "ARAMAYA_HAZIR" || status === "ARANDI_ULASILAMADI";
-  // Sunum gönderildikten sonra randevu ayarlanabilir.
-  const canSchedule =
-    status === "SUNUM_GONDERILDI" || status === "RANDEVU" || status === "TEKLIF_YAPILDI";
+
+  // Firmayı KALICI (hard) sil — kara listeden (soft delete) farklı, kayıtlar tümden gider.
+  async function deleteBusiness() {
+    if (
+      !confirm(
+        `“${business.name}” KALICI olarak silinecek. Tüm arama/randevu/analiz/sunum kayıtları da gider ve bu işlem geri alınamaz. Devam edilsin mi?`,
+      )
+    )
+      return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/businesses/${business.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      router.push("/calisma-listem");
+    } catch {
+      setErr("Firma silinemedi.");
+      setBusy(false);
+    }
+  }
 
   async function createAppointment() {
     if (!apt.when) return;
@@ -383,6 +403,14 @@ export function FirmaDetay({
                 <Ban className="size-3.5" /> Kara listeye al
               </button>
             )}
+            <button
+              onClick={deleteBusiness}
+              disabled={busy}
+              className="text-muted-foreground inline-flex items-center gap-1 text-xs hover:text-red-600 disabled:opacity-50"
+              title="Kaydı tümden kaldırır (geri alınamaz). Kara listeden farklı: tekrar taramada gelebilir."
+            >
+              <Trash2 className="size-3.5" /> Kalıcı sil
+            </button>
           </div>
         </div>
         {blacklisted && (
@@ -588,9 +616,8 @@ export function FirmaDetay({
         </DialogContent>
       </Dialog>
 
-      {/* Randevu (telefon pivotu) — sunum gönderildikten sonra */}
-      {canSchedule && (
-        <section className="rounded-lg border p-4">
+      {/* Randevu (telefon pivotu) — her durumda görünür: "ulaşıldı" adımı beklemeden randevu verilebilir */}
+      <section className="rounded-lg border p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-2 font-semibold">
               <CalendarPlus className="size-4" /> Randevu
@@ -636,8 +663,7 @@ export function FirmaDetay({
           <Button onClick={createAppointment} disabled={aptBusy || !apt.when} className="mt-3">
             <CalendarPlus className="size-4" /> {aptBusy ? "Kaydediliyor…" : "Randevu ayarla"}
           </Button>
-        </section>
-      )}
+      </section>
 
       {err && (
         <div className="rounded-md bg-red-600 px-3 py-1.5 text-sm text-white">{err}</div>

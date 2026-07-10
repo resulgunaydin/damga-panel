@@ -8,16 +8,26 @@ import {
   ExternalLink,
   Filter,
   Globe,
+  ListPlus,
   MapPin,
   Phone,
   Plus,
   Radar,
   Search,
+  Smartphone,
   Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { classifyWebsite } from "@/lib/website";
+import { phoneKind } from "@/lib/phone";
 
 type Signal = { key: string; label: string; points: number; detected: boolean };
 export type Breakdown = {
@@ -118,7 +128,17 @@ export function SegmentDetail({
   // Filtreler
   const [q, setQ] = useState("");
   const [siteFilter, setSiteFilter] = useState<"hepsi" | "var" | "sosyal" | "yok">("hepsi");
+  const [phoneFilter, setPhoneFilter] = useState<"hepsi" | "mobil" | "sabit">("hepsi");
   const [sort, setSort] = useState<"skor" | "isim" | "yorum" | "puan">("skor");
+
+  // Toplu "çalışmaya ekle" popup'ı — sayfa filtresinden bağımsız, kendi süzgeciyle
+  // (ör. "cep numarası olan ama sitesi olmayan" firmaları tek seferde ekle).
+  const [bulk, setBulk] = useState<{
+    open: boolean;
+    site: "hepsi" | "var" | "sosyal" | "yok";
+    phone: "hepsi" | "mobil" | "sabit";
+    busy: boolean;
+  }>({ open: false, site: "hepsi", phone: "hepsi", busy: false });
 
   const neverRun = usage.scanQueries === 0;
   const unscoredAll = businesses.filter((b) => !b.scoreBreakdown);
@@ -131,6 +151,9 @@ export function SegmentDetail({
       if (siteFilter === "var" && kind !== "gercek") return false;
       if (siteFilter === "sosyal" && kind !== "sosyal") return false;
       if (siteFilter === "yok" && (kind === "gercek" || kind === "sosyal")) return false;
+      const pk = phoneKind(b.phone);
+      if (phoneFilter === "mobil" && pk !== "mobil") return false;
+      if (phoneFilter === "sabit" && pk !== "sabit") return false;
       if (needle) {
         const hay = `${b.name} ${b.address ?? ""}`.toLocaleLowerCase("tr");
         if (!hay.includes(needle)) return false;
@@ -144,9 +167,47 @@ export function SegmentDetail({
       puan: (a, b) => (b.googleRating ?? 0) - (a.googleRating ?? 0),
     };
     return [...list].sort(cmp[sort]);
-  }, [businesses, q, siteFilter, sort]);
+  }, [businesses, q, siteFilter, phoneFilter, sort]);
 
   const unscored = filtered.filter((b) => !b.scoreBreakdown);
+
+  // Popup süzgecine uyan, henüz listede olmayan firmalar (toplu eklenecekler).
+  const bulkCandidates = useMemo(() => {
+    return businesses.filter((b) => {
+      if (b.inWorkList) return false;
+      const kind = classifyWebsite(b.website);
+      if (bulk.site === "var" && kind !== "gercek") return false;
+      if (bulk.site === "sosyal" && kind !== "sosyal") return false;
+      if (bulk.site === "yok" && (kind === "gercek" || kind === "sosyal")) return false;
+      const pk = phoneKind(b.phone);
+      if (bulk.phone === "mobil" && pk !== "mobil") return false;
+      if (bulk.phone === "sabit" && pk !== "sabit") return false;
+      return true;
+    });
+  }, [businesses, bulk.site, bulk.phone]);
+
+  async function bulkAdd() {
+    const ids = bulkCandidates.map((b) => b.id);
+    if (ids.length === 0) return;
+    setBulk((s) => ({ ...s, busy: true }));
+    try {
+      const res = await fetch("/api/businesses/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, action: "addToWork" }),
+      });
+      if (!res.ok) throw new Error();
+      const idSet = new Set(ids);
+      setBusinesses((bs) =>
+        bs.map((b) => (idSet.has(b.id) ? { ...b, inWorkList: true } : b)),
+      );
+      setBulk((s) => ({ ...s, open: false, busy: false }));
+      setMsg(`${ids.length} firma çalışma listesine eklendi.`);
+    } catch {
+      setBulk((s) => ({ ...s, busy: false }));
+      setMsg("Toplu ekleme başarısız.");
+    }
+  }
 
   async function refresh() {
     const res = await fetch(`/api/searches/${search.id}/businesses`);
@@ -332,6 +393,26 @@ export function SegmentDetail({
                 </button>
               ))}
             </div>
+            {/* Telefon türü — sabit hat (02xx/03xx/08xx …) ile cep numaralarını ayır */}
+            <div className="flex items-center gap-1">
+              {(
+                [
+                  ["hepsi", "Tüm hatlar"],
+                  ["mobil", "Cep"],
+                  ["sabit", "Sabit hat"],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => setPhoneFilter(k)}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                    phoneFilter === k ? "border-primary/40 bg-primary/10 text-primary" : "hover:bg-accent"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as typeof sort)}
@@ -342,6 +423,13 @@ export function SegmentDetail({
               <option value="puan">Puana göre</option>
               <option value="isim">İsme göre</option>
             </select>
+            <Button
+              variant="outline"
+              onClick={() => setBulk((s) => ({ ...s, open: true }))}
+              title="Filtreye uyan firmaları toplu olarak çalışma listesine ekle"
+            >
+              <ListPlus className="size-4" /> Toplu ekle
+            </Button>
           </div>
 
           <p className="text-muted-foreground text-sm">
@@ -399,6 +487,90 @@ export function SegmentDetail({
           )}
         </div>
       )}
+
+      {/* Toplu çalışmaya ekle — filtreye göre ayrı popup (Özellik 3) */}
+      <Dialog open={bulk.open} onOpenChange={(open) => setBulk((s) => ({ ...s, open }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Toplu çalışmaya ekle</DialogTitle>
+          </DialogHeader>
+          <p className="text-muted-foreground text-sm">
+            Aşağıdaki süzgece uyan ve <b>henüz listende olmayan</b> firmaları tek seferde
+            çalışma listene ekle.
+          </p>
+
+          <div className="grid gap-3">
+            <div>
+              <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+                <Globe className="size-3.5" /> Web sitesi
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                {(
+                  [
+                    ["hepsi", "Hepsi"],
+                    ["yok", "Site yok"],
+                    ["sosyal", "Sosyal"],
+                    ["var", "Site var"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    onClick={() => setBulk((s) => ({ ...s, site: k }))}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                      bulk.site === k ? "border-primary/40 bg-primary/10 text-primary" : "hover:bg-accent"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+                <Smartphone className="size-3.5" /> Telefon türü
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                {(
+                  [
+                    ["hepsi", "Tüm hatlar"],
+                    ["mobil", "Cep"],
+                    ["sabit", "Sabit hat"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    onClick={() => setBulk((s) => ({ ...s, phone: k }))}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                      bulk.phone === k ? "border-primary/40 bg-primary/10 text-primary" : "hover:bg-accent"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-muted/40 px-3 py-2.5 text-sm">
+            <b className="text-foreground tabular-nums">{bulkCandidates.length}</b> firma
+            eşleşiyor ve eklenecek.
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setBulk((s) => ({ ...s, open: false }))}
+            >
+              Vazgeç
+            </Button>
+            <Button onClick={bulkAdd} disabled={bulk.busy || bulkCandidates.length === 0}>
+              <Plus className="size-4" />
+              {bulk.busy ? "Ekleniyor…" : `${bulkCandidates.length} firmayı ekle`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

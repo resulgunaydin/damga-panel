@@ -63,6 +63,8 @@ async function saveBusiness(
   searchId: string,
   p: PlaceResult,
 ): Promise<boolean> {
+  // Telefonu olmayan firma asla çekilmez (soğuk temas telefon pivotu — numarasız firma işe yaramaz).
+  if (!p.phone || !p.phone.trim()) return false;
   const existing = await prisma.business.findUnique({ where: { placeId: p.id } });
   if (existing) return false; // zaten listede / geçmişte → dedup (kara liste dahil)
   await prisma.business.create({
