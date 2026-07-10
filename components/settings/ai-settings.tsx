@@ -103,8 +103,8 @@ export function AiSettings({
   return (
     <main className="mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 py-8">
       <div>
-        <Link href="/calisma-alani" className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1 text-sm">
-          <ArrowLeft className="size-4" /> Arama Alanı
+        <Link href="/ayarlar" className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1 text-sm">
+          <ArrowLeft className="size-4" /> Ayarlar
         </Link>
         <h1 className="font-heading flex items-center gap-2 text-2xl font-bold">
           <Sparkles className="size-6" /> AI Sağlayıcı

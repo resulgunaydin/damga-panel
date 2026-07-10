@@ -1,42 +1,66 @@
 import Link from "next/link";
-import {
-  AI_MODELS,
-  getAiProvider,
-  getStoredKeys,
-  providerConfigured,
-} from "@/lib/ai";
-import { AiSettings } from "@/components/settings/ai-settings";
+import { ChevronRight, Palette, Sparkles } from "lucide-react";
+import { getNotificationSettings } from "@/lib/notifications";
+import { NotificationSettings } from "@/components/settings/notification-settings";
 
 export const dynamic = "force-dynamic";
 
+const CATEGORIES = [
+  {
+    href: "/ayarlar/ai",
+    title: "Yapay Zekâ",
+    desc: "Sağlayıcı seçimi ve API anahtarları (mesaj + analiz üretimi).",
+    icon: Sparkles,
+  },
+  {
+    href: "/ayarlar/sunum",
+    title: "Sunum Markası & Temalar",
+    desc: "Logo, iletişim bilgileri ve sunum teması.",
+    icon: Palette,
+  },
+];
+
 export default async function AyarlarPage() {
-  const [provider, anthropic, gemini, keys] = await Promise.all([
-    getAiProvider(),
-    providerConfigured("anthropic"),
-    providerConfigured("gemini"),
-    getStoredKeys(),
-  ]);
+  const notifications = await getNotificationSettings();
+
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-8">
-      <Link
-        href="/ayarlar/sunum"
-        className="hover:bg-accent mb-6 flex items-center justify-between rounded-lg border p-4"
-      >
-        <span>
-          <span className="block font-medium">Sunum Markası &amp; Temalar</span>
-          <span className="text-muted-foreground text-sm">Logo, iletişim ve tema seçimi</span>
-        </span>
-        <span aria-hidden>→</span>
-      </Link>
-      <AiSettings
-        initial={{
-          provider,
-          anthropic,
-          gemini,
-          models: AI_MODELS,
-          keys,
-        }}
-      />
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-8">
+      <div>
+        <h1 className="font-heading text-2xl font-bold">Ayarlar</h1>
+        <p className="text-muted-foreground text-sm">
+          Bildirimler, yapay zekâ ve sunum ayarlarını buradan yönet.
+        </p>
+      </div>
+
+      {/* Bildirim ayarları (yeni alan) */}
+      <section>
+        <NotificationSettings initial={notifications} />
+      </section>
+
+      {/* Diğer kategoriler */}
+      <section>
+        <h2 className="text-muted-foreground mb-2 text-xs font-semibold tracking-wide uppercase">
+          Diğer ayarlar
+        </h2>
+        <div className="divide-y overflow-hidden rounded-xl border">
+          {CATEGORIES.map(({ href, title, desc, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className="hover:bg-accent/50 flex items-center gap-3 px-4 py-4 transition-colors"
+            >
+              <span className="bg-muted grid size-9 shrink-0 place-items-center rounded-lg">
+                <Icon className="size-4.5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium">{title}</span>
+                <span className="text-muted-foreground block text-sm">{desc}</span>
+              </span>
+              <ChevronRight className="text-muted-foreground size-4 shrink-0" />
+            </Link>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

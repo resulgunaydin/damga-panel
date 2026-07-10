@@ -17,6 +17,7 @@ import {
   Stamp,
   Sun,
 } from "lucide-react";
+import { NotificationBell } from "@/components/shell/notification-bell";
 
 type NavLink = { href: string; label: string; icon: LucideIcon; badge?: boolean };
 const LINKS: NavLink[] = [
@@ -138,6 +139,7 @@ export function AppNav() {
         </nav>
 
         <div className="ml-auto flex items-center gap-1">
+          <NotificationBell />
           <ThemeToggle />
           <LogoutButton />
         </div>
