@@ -5,15 +5,15 @@ import { buttonVariants } from "@/components/ui/button";
 const asamalar = [
   {
     no: "01",
-    ad: "Eleme",
+    ad: "Arama",
     renk: "text-muted-foreground",
-    aciklama: "Şehir + sektör ara, kaba ele, çalışma listesi. Bedava.",
+    aciklama: "Şehir + sektör ara, kaba ele, telefonla ara. Bedava.",
   },
   {
     no: "02",
     ad: "Potansiyel",
     renk: "text-primary",
-    aciklama: "Ön mesaja dönüş geldi. Derin analiz + sunum burada açılır.",
+    aciklama: "Telefonda olumlu döndü. Derin analiz + sunum burada açılır.",
   },
   {
     no: "03",

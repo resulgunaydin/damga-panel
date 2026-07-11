@@ -68,7 +68,8 @@ const STAGES: {
 }[] = [
   {
     key: "ELEME",
-    label: "Eleme",
+    // Sistem call-first: bu aşamanın kalbi arama. Etiket "Arama" (enum ELEME olarak kalır).
+    label: "Arama",
     badge: "bg-muted text-muted-foreground",
     dot: "bg-zinc-400",
     ring: "border-l-zinc-300 dark:border-l-zinc-700",
@@ -130,7 +131,8 @@ function isInCallQueue(f: Firm): boolean {
 export function KanbanBoard({ initial }: { initial: Firm[] }) {
   const [firms, setFirms] = useState<Firm[]>(initial);
   const [q, setQ] = useState("");
-  const [tab, setTab] = useState<StageTab>("ALL");
+  // Call-first: giriş varsayılanı günlük arama kuyruğu.
+  const [tab, setTab] = useState<StageTab>("CALL");
   const [sektor, setSektor] = useState("");
   const [il, setIl] = useState("");
   const [site, setSite] = useState<"hepsi" | "var" | "sosyal" | "yok">("hepsi");
@@ -367,10 +369,10 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
     }
   }
 
-  const TABS: { key: StageTab; label: string }[] = [
+  // Çalışma hunisi (durum) sekmeleri. "Bugün Ara" bunlardan ayrı bir günlük iş modudur.
+  const FUNNEL_TABS: { key: "ALL" | StageKey; label: string }[] = [
     { key: "ALL", label: "Tümü" },
-    { key: "CALL", label: "📞 Bugün Ara" },
-    { key: "ELEME", label: "Eleme" },
+    { key: "ELEME", label: "Arama" },
     { key: "POTANSIYEL", label: "Potansiyel" },
     { key: "MUSTERI", label: "Gerçek Müşteri" },
   ];
@@ -387,11 +389,37 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
         </Button>
       </div>
 
-      {/* Aşama sekmeleri */}
-      <div className="flex flex-wrap gap-1.5">
-        {TABS.map((t) => {
+      {/* Üst geçiş: solda günlük "Bugün Ara" iş modu, ayraç, sağda çalışma hunisi (durum) */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {/* Günlük iş modu — huninin bir aşaması değil, "bugün kimleri arayacağım" merceği */}
+        <button
+          onClick={() => setTab("CALL")}
+          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors ${
+            tab === "CALL"
+              ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+              : "border-emerald-300/60 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+          }`}
+        >
+          <Phone className="size-4" />
+          Bugün Ara
+          <span
+            className={`rounded-full px-1.5 text-xs tabular-nums ${
+              tab === "CALL"
+                ? "bg-emerald-600 text-white"
+                : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+            }`}
+          >
+            {stageCounts.CALL ?? 0}
+          </span>
+        </button>
+
+        {/* Ayraç */}
+        <span className="bg-border mx-1 hidden h-6 w-px sm:block" />
+
+        {/* Çalışma hunisi (durum) sekmeleri */}
+        {FUNNEL_TABS.map((t) => {
           const active = tab === t.key;
-          const meta = t.key === "ALL" || t.key === "CALL" ? null : stageMeta(t.key);
+          const meta = t.key === "ALL" ? null : stageMeta(t.key);
           return (
             <button
               key={t.key}
