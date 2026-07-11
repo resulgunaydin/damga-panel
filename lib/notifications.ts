@@ -71,7 +71,44 @@ export type AppNotification = {
   message: string;
   at: string; // ilgili zaman (ISO)
   href: string; // tıklayınca gidilecek yer
+  read: boolean; // kullanıcı okundu işaretledi mi
 };
+
+// ── Okundu durumu (kalıcı) ───────────────────────────────────────────────────
+// Bildirimler durumdan türediği için "okundu" bilgisini id→zaman eşlemesi olarak
+// AppSetting'te tutarız. 30 günden eski kayıtlar budanır (sınırsız büyümesin).
+const READ_KEY = "notifications.read";
+const READ_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+export async function getReadMap(): Promise<Record<string, string>> {
+  const row = await prisma.appSetting.findUnique({ where: { key: READ_KEY } });
+  const v = (row?.value ?? {}) as Record<string, string>;
+  // Süresi geçmişleri ayıkla.
+  const now = Date.now();
+  const cleaned: Record<string, string> = {};
+  for (const [id, iso] of Object.entries(v)) {
+    if (now - new Date(iso).getTime() < READ_TTL_MS) cleaned[id] = iso;
+  }
+  return cleaned;
+}
+
+export async function markRead(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const map = await getReadMap();
+  const nowIso = new Date().toISOString();
+  for (const id of ids) map[id] = nowIso;
+  await prisma.appSetting.upsert({
+    where: { key: READ_KEY },
+    update: { value: map },
+    create: { key: READ_KEY, value: map },
+  });
+}
+
+// O anki tüm bildirimleri okundu işaretle.
+export async function markAllRead(): Promise<void> {
+  const items = await buildNotifications();
+  await markRead(items.map((n) => n.id));
+}
 
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
@@ -85,7 +122,7 @@ export async function buildNotifications(
 
   const now = Date.now();
   const lead = cfg.appointmentLeadMinutes * MIN;
-  const out: AppNotification[] = [];
+  const out: Omit<AppNotification, "read">[] = [];
 
   // ── Randevular (yalnızca PLANLANDI) ──────────────────────────────────────
   // Yaklaşan: (now, now+lead] · Zamanı gelmiş/geçmiş: son 3 gün içinde now'a kadar.
@@ -159,5 +196,7 @@ export async function buildNotifications(
     }
   }
 
-  return out;
+  // Okundu bayrağını uygula.
+  const readMap = await getReadMap();
+  return out.map((n) => ({ ...n, read: readMap[n.id] != null }));
 }

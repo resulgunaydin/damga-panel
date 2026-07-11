@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { checkSite, mapWithConcurrency } from "@/lib/site-check";
-import { computeScore } from "@/lib/scoring";
+import { computeScore, getScoringConfig } from "@/lib/scoring";
 import { hasRealWebsite } from "@/lib/website";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -27,6 +27,8 @@ export async function POST(req: Request, { params }: Ctx) {
     ? businesses
     : businesses.filter((b) => b.scoreBreakdown == null);
 
+  const scoringCfg = await getScoringConfig();
+
   await mapWithConcurrency(targets, 10, async (b) => {
     // Sadece gerçek siteler için sağlık kontrolü (sosyal/rehber çekilmez).
     const siteCheck = hasRealWebsite(b.website) ? await checkSite(b.website!) : null;
@@ -37,6 +39,7 @@ export async function POST(req: Request, { params }: Ctx) {
         googleReviews: b.googleReviews,
       },
       siteCheck,
+      scoringCfg,
     );
     await prisma.business.update({
       where: { id: b.id },

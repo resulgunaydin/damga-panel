@@ -12,7 +12,6 @@ import {
   Search,
   Star,
   Trash2,
-  X,
 } from "lucide-react";
 import {
   Dialog,
@@ -235,19 +234,24 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
     if (status === "KAYIP") setLoss({ open: true, firmId: id });
     else patch(id, status);
   }
-  async function removeFromList(id: string) {
+  // Tek firmayı KALICI (hard) sil. (Soft "listeden çıkar" kaldırıldı — tek silme yolu bu.)
+  async function deleteFirm(id: string) {
+    const f = firms.find((x) => x.id === id);
+    if (
+      !confirm(
+        `"${f?.name ?? "Firma"}" KALICI olarak silinecek. Tüm arama/randevu/analiz kayıtları da gider ve bu işlem geri alınamaz. Devam edilsin mi?`,
+      )
+    )
+      return;
     const prev = firms;
-    setFirms((fs) => fs.filter((f) => f.id !== id));
+    setFirms((fs) => fs.filter((x) => x.id !== id));
+    setSelectMany([id], false);
     try {
-      const res = await fetch(`/api/businesses/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ inWorkList: false }),
-      });
+      const res = await fetch(`/api/businesses/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
     } catch {
       setFirms(prev);
-      flash("Listeden çıkarılamadı.");
+      flash("Silinemedi.");
     }
   }
   function flash(m: string) {
@@ -577,7 +581,7 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
                                   selected={selected.has(f.id)}
                                   onSelect={toggleSelect}
                                   onStatus={changeStatus}
-                                  onRemove={() => removeFromList(f.id)}
+                                  onDelete={() => deleteFirm(f.id)}
                                   onToggleCall={toggleCallList}
                                 />
                               ))}
@@ -641,14 +645,14 @@ function FirmRow({
   selected,
   onSelect,
   onStatus,
-  onRemove,
+  onDelete,
   onToggleCall,
 }: {
   f: Firm;
   selected: boolean;
   onSelect: (id: string, next: boolean) => void;
   onStatus: (id: string, s: string) => void;
-  onRemove: () => void;
+  onDelete: () => void;
   onToggleCall: (id: string, next: boolean) => void;
 }) {
   const meta = stageMeta(f.stage as StageKey);
@@ -727,8 +731,8 @@ function FirmRow({
             </optgroup>
           ))}
         </select>
-        <button onClick={onRemove} className="text-muted-foreground hover:bg-accent shrink-0 rounded-md p-1.5 hover:text-red-600" title="Çalışma listemden çıkar">
-          <X className="size-4" />
+        <button onClick={onDelete} className="text-muted-foreground hover:bg-accent shrink-0 rounded-md p-1.5 hover:text-red-600" title="Kalıcı sil">
+          <Trash2 className="size-4" />
         </button>
       </div>
     </div>

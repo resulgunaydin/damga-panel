@@ -1,11 +1,17 @@
 import Link from "next/link";
-import { ChevronRight, Palette, Sparkles } from "lucide-react";
+import { ChevronRight, Palette, SlidersHorizontal, Sparkles } from "lucide-react";
 import { getNotificationSettings } from "@/lib/notifications";
 import { NotificationSettings } from "@/components/settings/notification-settings";
 
 export const dynamic = "force-dynamic";
 
 const CATEGORIES = [
+  {
+    href: "/ayarlar/puanlama",
+    title: "Firma Puanlama",
+    desc: "Fırsat skoru kuralları (puanlar, eşikler) ve veri dağılımı.",
+    icon: SlidersHorizontal,
+  },
   {
     href: "/ayarlar/ai",
     title: "Yapay Zekâ",

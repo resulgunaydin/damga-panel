@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bell, CalendarClock, CheckCircle2, ListChecks } from "lucide-react";
+import { Bell, CalendarClock, Check, CheckCircle2, ListChecks, X } from "lucide-react";
 
 type AppNotification = {
   id: string;
@@ -12,12 +12,14 @@ type AppNotification = {
   message: string;
   at: string;
   href: string;
+  read: boolean;
 };
 type Payload = {
   enabled: boolean;
   browserNotifications: boolean;
   sound: boolean;
   count: number;
+  unreadCount: number;
   notifications: AppNotification[];
 };
 
@@ -32,7 +34,6 @@ function loadSeen(): Set<string> {
   }
 }
 function saveSeen(set: Set<string>) {
-  // Son 200 id'yi tut (sınırsız büyümesin).
   const arr = [...set].slice(-200);
   try {
     localStorage.setItem(SEEN_KEY, JSON.stringify(arr));
@@ -85,8 +86,10 @@ export function NotificationBell() {
       const data: Payload = await res.json();
       setItems(data.notifications ?? []);
 
-      // İlk yüklemede mevcut olanları "görüldü" say ki geçmiş her şey pop-up yapmasın.
-      const fresh = (data.notifications ?? []).filter((n) => !seenRef.current.has(n.id));
+      // Yeni + okunmamış olanlar için tarayıcı bildirimi (ilk yüklemede pop-up yok).
+      const fresh = (data.notifications ?? []).filter(
+        (n) => !n.read && !seenRef.current.has(n.id),
+      );
       if (!startedRef.current) {
         for (const n of data.notifications ?? []) seenRef.current.add(n.id);
         saveSeen(seenRef.current);
@@ -128,7 +131,6 @@ export function NotificationBell() {
     };
   }, [poll]);
 
-  // Dışarı tıklayınca kapat.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
@@ -138,15 +140,40 @@ export function NotificationBell() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
+  async function markRead(ids: string[]) {
+    setItems((list) => list.map((n) => (ids.includes(n.id) ? { ...n, read: true } : n)));
+    try {
+      await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+    } catch {
+      /* yok say — bir sonraki poll düzeltir */
+    }
+  }
+  async function markAll() {
+    setItems((list) => list.map((n) => ({ ...n, read: true })));
+    try {
+      await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+    } catch {
+      /* yok say */
+    }
+  }
+
   function toggle() {
-    // Açılırken (kullanıcı jesti) tarayıcı bildirimi izni yoksa iste.
     if (!open && "Notification" in window && Notification.permission === "default") {
       Notification.requestPermission().catch(() => {});
     }
     setOpen((o) => !o);
   }
 
-  const count = items.length;
+  const unread = items.filter((n) => !n.read);
+  const count = unread.length;
 
   return (
     <div ref={rootRef} className="relative">
@@ -168,34 +195,38 @@ export function NotificationBell() {
         <div className="bg-popover text-popover-foreground absolute right-0 z-50 mt-2 max-h-[70vh] w-80 overflow-hidden rounded-xl border shadow-lg ring-1 ring-foreground/5">
           <div className="flex items-center justify-between border-b px-4 py-2.5">
             <span className="font-heading text-sm font-bold">Bildirimler</span>
-            <Link
-              href="/ayarlar"
-              onClick={() => setOpen(false)}
-              className="text-muted-foreground hover:text-foreground text-xs"
-            >
-              Ayarlar
-            </Link>
+            {count > 0 && (
+              <button
+                onClick={markAll}
+                className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
+              >
+                <Check className="size-3" /> Tümünü okundu
+              </button>
+            )}
           </div>
 
           {count === 0 ? (
             <div className="text-muted-foreground flex flex-col items-center gap-2 px-4 py-10 text-center text-sm">
               <CheckCircle2 className="size-7 opacity-40" />
-              Şu an bekleyen bildirim yok.
+              Okunmamış bildirim yok.
             </div>
           ) : (
-            <ul className="max-h-[60vh] divide-y overflow-y-auto">
-              {items.map((n) => {
+            <ul className="max-h-[52vh] divide-y overflow-y-auto">
+              {unread.map((n) => {
                 const Icon = n.type === "appointment" ? CalendarClock : ListChecks;
                 const accent =
                   n.severity === "due"
                     ? "text-red-600 dark:text-red-400"
                     : "text-amber-600 dark:text-amber-400";
                 return (
-                  <li key={n.id}>
+                  <li key={n.id} className="hover:bg-accent/50 flex items-start gap-2 px-3 py-3">
                     <Link
                       href={n.href}
-                      onClick={() => setOpen(false)}
-                      className="hover:bg-accent/50 flex items-start gap-3 px-4 py-3 transition-colors"
+                      onClick={() => {
+                        markRead([n.id]);
+                        setOpen(false);
+                      }}
+                      className="flex min-w-0 flex-1 items-start gap-3"
                     >
                       <Icon className={`mt-0.5 size-4 shrink-0 ${accent}`} />
                       <div className="min-w-0 flex-1">
@@ -208,11 +239,35 @@ export function NotificationBell() {
                         <p className="text-muted-foreground truncate text-xs">{n.message}</p>
                       </div>
                     </Link>
+                    <button
+                      onClick={() => markRead([n.id])}
+                      className="text-muted-foreground hover:bg-accent hover:text-foreground mt-0.5 shrink-0 rounded p-1"
+                      title="Okundu işaretle"
+                    >
+                      <X className="size-3.5" />
+                    </button>
                   </li>
                 );
               })}
             </ul>
           )}
+
+          <div className="flex items-center justify-between border-t px-4 py-2">
+            <Link
+              href="/bildirimler"
+              onClick={() => setOpen(false)}
+              className="text-primary text-xs font-medium hover:underline"
+            >
+              Tümünü gör
+            </Link>
+            <Link
+              href="/ayarlar"
+              onClick={() => setOpen(false)}
+              className="text-muted-foreground hover:text-foreground text-xs"
+            >
+              Ayarlar
+            </Link>
+          </div>
         </div>
       )}
     </div>

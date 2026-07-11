@@ -122,7 +122,7 @@ export function FirmaDetay({
   const [callLossOpen, setCallLossOpen] = useState(false);
   const [scriptOpen, setScriptOpen] = useState(true);
   const [appointments, setAppointments] = useState<AppointmentRecord[]>(initialAppointments);
-  const [apt, setApt] = useState({ when: "", location: "", note: "" });
+  const [apt, setApt] = useState({ when: "", note: "" });
   const [aptBusy, setAptBusy] = useState(false);
 
   // Aramaya uygun (eleme) aşamasındaki durumlar — arama sonucu butonları burada gösterilir.
@@ -159,7 +159,6 @@ export function FirmaDetay({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           scheduledAt: new Date(apt.when).toISOString(),
-          location: apt.location,
           note: apt.note,
         }),
       });
@@ -186,7 +185,7 @@ export function FirmaDetay({
         },
         ...a,
       ]);
-      setApt({ when: "", location: "", note: "" });
+      setApt({ when: "", note: "" });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Randevu kaydedilemedi.");
     } finally {
@@ -649,15 +648,9 @@ export function FirmaDetay({
               className="bg-background h-9 rounded-md border px-2 text-sm"
             />
             <Input
-              placeholder="Yer (adres / telefon / video linki)"
-              value={apt.location}
-              onChange={(e) => setApt((s) => ({ ...s, location: e.target.value }))}
-            />
-            <Input
               placeholder="Not (opsiyonel)"
               value={apt.note}
               onChange={(e) => setApt((s) => ({ ...s, note: e.target.value }))}
-              className="sm:col-span-2"
             />
           </div>
           <Button onClick={createAppointment} disabled={aptBusy || !apt.when} className="mt-3">
