@@ -448,13 +448,10 @@ export function FirmaDetay({
       {/* Satış fırsatları (Bölüm 4.6) — fiyatsız */}
       {opportunities.length > 0 && (
         <section className="rounded-lg border p-4">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3">
             <h2 className="flex items-center gap-2 font-semibold">
               <Package className="size-4" /> Satış fırsatları
             </h2>
-            <Link href="/hizmetler" className="text-muted-foreground text-xs hover:underline">
-              Hizmet listem
-            </Link>
           </div>
           <ul className="space-y-2">
             {opportunities.map((o) => (

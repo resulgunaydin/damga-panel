@@ -12,7 +12,6 @@ import {
   LogOut,
   type LucideIcon,
   Moon,
-  Package,
   Settings,
   Stamp,
   Sun,
@@ -25,7 +24,6 @@ const LINKS: NavLink[] = [
   { href: "/calisma-listem", label: "Çalışma Listem", icon: LayoutGrid },
   { href: "/randevular", label: "Randevular", icon: CalendarDays },
   { href: "/gorevler", label: "Görevler", icon: ListChecks, badge: true },
-  { href: "/hizmetler", label: "Hizmetler", icon: Package },
   { href: "/kullanim", label: "Kullanım", icon: Gauge },
   { href: "/ayarlar", label: "Ayarlar", icon: Settings },
 ];

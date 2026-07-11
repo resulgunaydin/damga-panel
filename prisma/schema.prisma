@@ -282,17 +282,6 @@ model Payment {
 // Yardımcı varlıklar — Bölüm 4.6, 4.12
 // ─────────────────────────────────────────────────────────────
 
-// Hizmet Listesi — FİYATSIZ (Bölüm 4.6): sadece "hangi hizmetler var".
-model ServiceCatalog {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  active      Boolean  @default(true)
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
 // Sorgu/analiz sayaçları (Bölüm 4.12) — gün bazında toplanır; ay = günlerin toplamı.
 model ApiUsage {
   id    String       @id @default(cuid())
