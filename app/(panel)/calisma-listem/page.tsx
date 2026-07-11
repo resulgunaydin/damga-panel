@@ -23,6 +23,7 @@ export default async function CalismaListemPage() {
       nextCallAt: true,
       searchId: true,
       manualAdded: true,
+      social: true,
       search: {
         select: {
           city: true,
@@ -46,7 +47,7 @@ export default async function CalismaListemPage() {
         phone: b.phone,
         website: b.website,
         address: b.address,
-        mapsUri: null,
+        mapsUri: (b.social as { googleMapsUri?: string } | null)?.googleMapsUri ?? null,
         googleRating: b.googleRating,
         googleReviews: b.googleReviews,
         inCallList: b.inCallList,

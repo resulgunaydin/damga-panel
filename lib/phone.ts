@@ -26,6 +26,21 @@ export function isMobile(phone: string | null | undefined): boolean {
   return phoneKind(phone) === "mobil";
 }
 
+// wa.me için uluslararası numara (ülke koduyla, + ve boşluk olmadan). TR varsayımı:
+// "0532…" → "90532…", zaten "90…" ise korunur, 10 haneli "5…" → "905…". Geçersizse null.
+export function waMeNumber(phone: string | null | undefined): string | null {
+  if (!phone || !phone.trim()) return null;
+  let d = phone.replace(/\D/g, "");
+  if (d.startsWith("90")) {
+    // ülke kodu zaten var
+  } else if (d.startsWith("0")) {
+    d = "90" + d.slice(1);
+  } else if (d.length === 10) {
+    d = "90" + d;
+  }
+  return d.length >= 12 ? d : null; // 90 + 10 hane
+}
+
 export const PHONE_KIND_LABEL: Record<PhoneKind, string> = {
   mobil: "Cep (normal)",
   sabit: "Sabit hat",
