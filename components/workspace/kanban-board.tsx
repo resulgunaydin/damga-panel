@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ChevronDown,
@@ -130,8 +130,8 @@ function isInCallQueue(f: Firm): boolean {
 export function KanbanBoard({ initial }: { initial: Firm[] }) {
   const [firms, setFirms] = useState<Firm[]>(initial);
   const [q, setQ] = useState("");
-  // Call-first: giriş varsayılanı günlük arama kuyruğu.
-  const [tab, setTab] = useState<StageTab>("CALL");
+  // Giriş varsayılanı: Tümü (tüm huni görünür).
+  const [tab, setTab] = useState<StageTab>("ALL");
   const [sektor, setSektor] = useState("");
   const [il, setIl] = useState("");
   const [site, setSite] = useState<"hepsi" | "var" | "sosyal" | "yok">("hepsi");
@@ -143,6 +143,31 @@ export function KanbanBoard({ initial }: { initial: Firm[] }) {
   const [loss, setLoss] = useState<{ open: boolean; firmId: string | null }>({ open: false, firmId: null });
   const [err, setErr] = useState<string | null>(null);
   const [manual, setManual] = useState({ open: false, name: "", phone: "", website: "", error: "" });
+  const [restored, setRestored] = useState(false);
+
+  // Açık/kapalı (aşama/segment) durumunu tarayıcıda hatırla:
+  // sayfa yenilenince son açtığın alanlar açık kalsın. (Sekme hatırlanmaz → girişte hep Tümü.)
+  useEffect(() => {
+    try {
+      const os = localStorage.getItem("damga.kanban.openStage");
+      if (os) setOpenStage(new Set(JSON.parse(os) as string[]));
+      const og = localStorage.getItem("damga.kanban.openSeg");
+      if (og) setOpenSeg(new Set(JSON.parse(og) as string[]));
+    } catch {
+      /* yok say */
+    }
+    setRestored(true);
+  }, []);
+
+  useEffect(() => {
+    if (!restored) return; // ilk yükleme geri yüklenmeden üzerine yazma
+    try {
+      localStorage.setItem("damga.kanban.openStage", JSON.stringify([...openStage]));
+      localStorage.setItem("damga.kanban.openSeg", JSON.stringify([...openSeg]));
+    } catch {
+      /* yok say */
+    }
+  }, [restored, openStage, openSeg]);
 
   const sektorler = useMemo(
     () => [...new Set(firms.map((f) => f.sector).filter(Boolean))].sort((a, b) => a!.localeCompare(b!, "tr")) as string[],
