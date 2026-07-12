@@ -35,7 +35,15 @@ type Arama = {
   keywords: string[];
   lastRunAt: string | null;
   firmaCount: number;
+  queryCount: number;
   scanState: "bos" | "kismi" | "tamam";
+};
+// Silmeden önce gösterilen etki özeti (GET /api/searches/[id]).
+type Impact = {
+  businesses: number;
+  inWorkList: number;
+  customers: number;
+  queryCount: number;
 };
 const NONE = "__genel__";
 
@@ -77,6 +85,8 @@ export function Workspace({
 
   const [wiz, setWiz] = useState({ open: false, city: "", district: "", sector: "", kw: [] as string[], kwInput: "" });
   const [sekDialog, setSekDialog] = useState<{ open: boolean; draft: Sector[] }>({ open: false, draft: [] });
+  // Silme onayı: impact null iken özet yükleniyor demektir.
+  const [del, setDel] = useState<{ arama: Arama; impact: Impact | null; busy: boolean } | null>(null);
 
   function fail(e: unknown) {
     setError(e instanceof Error ? e.message : "Bir hata oluştu");
@@ -207,11 +217,28 @@ export function Workspace({
       fail(e);
     }
   }
-  async function deleteArama(id: string) {
+  // ── Arama sil (onaylı) ──
+  // Silme Cascade: firmalar da gider. Önce ne kaybedileceğini göster.
+  async function askDelete(s: Arama) {
+    setDel({ arama: s, impact: null, busy: false });
+    try {
+      const { impact } = await api<{ impact: Impact }>(`/api/searches/${s.id}`, "GET");
+      setDel((d) => (d && d.arama.id === s.id ? { ...d, impact } : d));
+    } catch (e) {
+      setDel(null);
+      fail(e);
+    }
+  }
+  async function confirmDelete() {
+    if (!del) return;
+    const { id } = del.arama;
+    setDel((d) => (d ? { ...d, busy: true } : d));
     try {
       await api(`/api/searches/${id}`, "DELETE");
       setAramalar((ss) => ss.filter((s) => s.id !== id));
+      setDel(null);
     } catch (e) {
+      setDel((d) => (d ? { ...d, busy: false } : d));
       fail(e);
     }
   }
@@ -425,7 +452,7 @@ export function Workspace({
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     {g.items.map((s) => (
-                      <AramaCard key={s.id} s={s} onDelete={() => deleteArama(s.id)} />
+                      <AramaCard key={s.id} s={s} onDelete={() => askDelete(s)} />
                     ))}
                   </div>
                 </section>
@@ -566,6 +593,77 @@ export function Workspace({
           <DialogFooter>
             <Button variant="ghost" onClick={() => setSekDialog({ open: false, draft: [] })}>Vazgeç</Button>
             <Button onClick={saveSectors}>Kaydet</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Arama silme onayı ── */}
+      <Dialog open={del !== null} onOpenChange={(open) => !open && !del?.busy && setDel(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-heading">Aramayı sil</DialogTitle>
+          </DialogHeader>
+          {del && (
+            <div className="space-y-4 text-sm">
+              <p>
+                <span className="font-medium">
+                  {del.arama.city}
+                  {del.arama.district ? ` · ${del.arama.district}` : ""} · {del.arama.sector}
+                </span>{" "}
+                araması ve bu aramada bulunan firmalar <strong>kalıcı olarak</strong> silinecek.
+              </p>
+
+              {!del.impact ? (
+                <p className="text-muted-foreground">Etki özeti yükleniyor…</p>
+              ) : (
+                <>
+                  <ul className="bg-muted/50 space-y-1 rounded-lg border p-3">
+                    <li className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">Silinecek firma</span>
+                      <span className="font-medium tabular-nums">{del.impact.businesses}</span>
+                    </li>
+                    {del.impact.inWorkList > 0 && (
+                      <li className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">— Çalışma listendeki</span>
+                        <span className="font-medium tabular-nums">{del.impact.inWorkList}</span>
+                      </li>
+                    )}
+                    {del.impact.customers > 0 && (
+                      <li className="text-destructive flex justify-between gap-3">
+                        <span>— Müşteriye dönmüş (iş + ödeme kayıtlarıyla)</span>
+                        <span className="font-medium tabular-nums">{del.impact.customers}</span>
+                      </li>
+                    )}
+                  </ul>
+
+                  {del.impact.customers > 0 && (
+                    <p className="text-destructive">
+                      Dikkat: müşteri kayıtları, işleri ve ödeme geçmişi de silinir. Bu geri alınamaz.
+                    </p>
+                  )}
+
+                  <p className="text-muted-foreground">
+                    Bu firmaları tekrar görmek istersen aynı bölge için yeniden arama açıp{" "}
+                    <strong>baştan taraman</strong> gerekir — bu yeni Google Places sorgusu harcar.
+                    {del.impact.queryCount > 0 && (
+                      <> Bu aramada şimdiye kadar {del.impact.queryCount} sorgu harcanmıştı.</>
+                    )}
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDel(null)} disabled={del?.busy}>
+              Vazgeç
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={!del?.impact || del.busy}
+            >
+              {del?.busy ? "Siliniyor…" : "Kalıcı olarak sil"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

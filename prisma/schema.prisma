@@ -53,7 +53,11 @@ model Search {
 model Business {
   id             String         @id @default(cuid())
   searchId       String?
-  search         Search?        @relation(fields: [searchId], references: [id], onDelete: SetNull)
+  // Arama silinince firmaları da silinir. SetNull olsaydı firmalar öksüz kalır,
+  // placeId dedup'ı onları "zaten var" sayar ve aynı bölge yeniden taranınca
+  // bir daha asla çıkmazlardı. searchId yine de opsiyonel: elle eklenen
+  // firmalar (manualAdded) hiçbir aramaya bağlı değil.
+  search         Search?        @relation(fields: [searchId], references: [id], onDelete: Cascade)
   placeId        String?        @unique // Google place_id ile tekilleştirme (dedup)
   name           String
   phone          String?

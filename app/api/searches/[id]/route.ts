@@ -3,6 +3,30 @@ import { prisma } from "@/lib/prisma";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+// Silme onayı için etki özeti: ne kaybolacak, yeniden taramanın bedeli ne.
+// Firma silme Cascade → müşteri · iş · ödeme kayıtları da gider (schema.prisma).
+export async function GET(_req: Request, { params }: Ctx) {
+  const { id } = await params;
+  const search = await prisma.search.findUnique({
+    where: { id },
+    select: { id: true, city: true, district: true, sector: true, queryCount: true },
+  });
+  if (!search) {
+    return NextResponse.json({ error: "Arama bulunamadı." }, { status: 404 });
+  }
+
+  const [businesses, inWorkList, customers] = await Promise.all([
+    prisma.business.count({ where: { searchId: id } }),
+    prisma.business.count({ where: { searchId: id, inWorkList: true } }),
+    prisma.customer.count({ where: { business: { searchId: id } } }),
+  ]);
+
+  return NextResponse.json({
+    search,
+    impact: { businesses, inWorkList, customers, queryCount: search.queryCount },
+  });
+}
+
 // Segmenti güncelle (klasöre taşı / alanlarını düzenle).
 export async function PATCH(req: Request, { params }: Ctx) {
   const { id } = await params;
@@ -23,9 +47,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
   return NextResponse.json(search);
 }
 
-// Segmenti sil (bağlı firmalar da silinir — henüz firma yok).
+// Segmenti sil — bağlı firmalar da silinir (Cascade).
+// Kasıtlı: firmalar kalsaydı placeId dedup'ı yüzünden aynı bölge yeniden
+// taranınca bir daha çıkmazlardı. UI silmeden önce etki özetini gösterir.
 export async function DELETE(_req: Request, { params }: Ctx) {
   const { id } = await params;
+  const deleted = await prisma.business.count({ where: { searchId: id } });
   await prisma.search.delete({ where: { id } });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, deletedBusinesses: deleted });
 }

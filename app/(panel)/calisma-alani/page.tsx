@@ -36,6 +36,7 @@ export default async function CalismaAlaniPage() {
           keywords: s.keywords,
           lastRunAt: s.lastRunAt ? s.lastRunAt.toISOString() : null,
           firmaCount: s._count.businesses,
+          queryCount: s.queryCount,
           scanState: scanState as "bos" | "kismi" | "tamam",
         };
       })}
